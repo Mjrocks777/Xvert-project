@@ -27,5 +27,3 @@ async def merge_documents_endpoint(
         return FileResponse(file_path, filename="merged_output.pdf")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    
-    
