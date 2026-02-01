@@ -35,13 +35,13 @@ async def root():
 async def health_check():
     return {"status": "healthy"}
 
-# Import and include routers
-from app.routers import convert
-# --- NEW: Import your documents router ---
-from app.routers import documents 
+# --- ROUTERS ---
 
+from app.routers import convert
 app.include_router(convert.router, prefix="/api/convert", tags=["conversion"])
-# --- NEW: Register the documents router ---
+
+# 2. Your Router (Documents & PDF Tools)
+from app.routers import documents
 app.include_router(documents.router, prefix="/api", tags=["documents"])
 
 # Uncomment as you build more routers:
