@@ -43,9 +43,10 @@ export default function Navbar() {
                 </span>
             </Link>
             <div style={{ display: 'flex', gap: '1rem' }}>
-                <Link to="/login" style={{
+                <Link to="/login" className="nav-btn" style={{
                     textDecoration: 'none',
-                    backgroundColor: '#CBB9A4', // Soft Sandstone
+                    backgroundColor: '#B0D8F5', // Soft Sky Blue
+
                     color: '#333',
                     padding: '0.5rem 1.5rem',
                     borderRadius: '30px', // Pill shape
@@ -53,9 +54,10 @@ export default function Navbar() {
                     fontWeight: '700',
                     fontFamily: '"Nunito", sans-serif'
                 }}>Login</Link>
-                <Link to="/signup" style={{
+                <Link to="/signup" className="nav-btn" style={{
                     textDecoration: 'none',
-                    backgroundColor: '#CBB9A4', // Soft Sandstone
+                    backgroundColor: '#B0D8F5', // Soft Sky Blue
+
                     color: '#333',
                     padding: '0.5rem 1.5rem',
                     borderRadius: '30px', // Pill shape

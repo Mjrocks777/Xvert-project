@@ -13,7 +13,7 @@ export default function Dashboard() {
         <div style={{ padding: '2rem' }}>
             <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h1>Dashboard</h1>
-                <button onClick={handleLogout}>Logout</button>
+                <button className="btn-pill" onClick={handleLogout}>Logout</button>
             </header>
             <div style={{ marginTop: '2rem' }}>
                 <p>Welcome to your dashboard!</p>

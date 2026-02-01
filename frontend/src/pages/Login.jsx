@@ -33,8 +33,8 @@ export default function Login() {
         <div style={{
             height: '100vh',
             width: '100vw',
-            backgroundImage: "url('/login_bg.png')",
-            backgroundSize: '100% 100%',
+            backgroundImage: "url('/login_bg_new.png')",
+            backgroundSize: 'cover',
             backgroundPosition: 'center',
             backgroundRepeat: 'no-repeat',
             display: 'flex',
@@ -156,13 +156,15 @@ export default function Login() {
                         <button
                             type="submit"
                             disabled={loading}
+
+
                             style={{
                                 marginTop: '0.5rem',
                                 width: '100%',
                                 padding: '0.8rem',
                                 borderRadius: '4px',
                                 border: 'none',
-                                backgroundColor: '#CBB9A4', // Beige/Soft Sandstone
+                                backgroundColor: '#B0D8F5', // Soft Sky Blue
                                 color: '#1a1a1a', // Dark text for contrast
                                 fontSize: '0.85rem',
                                 fontWeight: '700',
@@ -212,6 +214,7 @@ export default function Login() {
                             justifyContent: 'center',
                             transition: 'transform 0.2s',
                         }}
+                            className="btn-glow-circle"
                             onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
                             onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
                         >
@@ -232,6 +235,7 @@ export default function Login() {
                             justifyContent: 'center',
                             transition: 'transform 0.2s',
                         }}
+                            className="btn-glow-circle"
                             onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
                             onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
                         >
