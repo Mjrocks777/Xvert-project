@@ -86,16 +86,17 @@ export default function ForgotPassword() {
 
                     {message && (
                         <div style={{
-                            backgroundColor: 'rgba(20, 160, 20, 0.25)',
-                            border: '1px solid rgba(100, 200, 100, 0.5)',
-                            color: '#E8F5E9',
+                            backgroundColor: 'rgba(30, 200, 30, 0.4)', // Slightly stronger green
+                            border: '1px solid rgba(130, 255, 130, 0.6)',
+                            color: '#ffffff', // Pure white for max visibility
                             padding: '0.75rem',
                             borderRadius: '4px',
                             marginBottom: '1rem',
-                            fontSize: '0.85rem',
-                            fontWeight: '500',
+                            fontSize: '0.9rem', // Slightly larger font
+                            fontWeight: '600', // Semia-bold
                             textAlign: 'center',
-                            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                            textShadow: '0 1px 2px rgba(0,0,0,0.5)' // Text shadow for legibility
                         }}>
                             {message}
                         </div>
