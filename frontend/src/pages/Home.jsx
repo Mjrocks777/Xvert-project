@@ -3,6 +3,8 @@ import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../services/supabase' // Direct supabase usage for immediate auth state check
 import authService from '../services/AuthService'
 import conversionService from '../services/ConversionService'
+import UserAvatar from '../components/UserAvatar'
+import Navbar from '../components/Navbar'
 
 export default function Home() {
     const navigate = useNavigate()
@@ -131,79 +133,15 @@ export default function Home() {
             color: '#333'
         }}>
             {/* Navbar */}
-            <header style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                padding: '1rem 2rem',
-                backgroundColor: '#fff',
-                borderBottom: '1px solid #e0e0e0',
-                boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-            }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ fontSize: '1.5rem', marginRight: '0.5rem' }}>🔄</span>
-                    <h1 style={{
-                        fontFamily: '"Outfit", sans-serif',
-                        fontSize: '1.5rem',
-                        margin: 0,
-                        color: '#2d3e50' // Dark blue-grey
-                    }}>Xvert</h1>
-                </div>
-
-                {session ? (
-                    <button
-                        onClick={handleLogout}
-                        className="btn-pill"
-                        style={{
-                            backgroundColor: '#E8D5B5', // Beige
-                            color: '#2d3e50', // Dark text for contrast
-                            border: 'none',
-                            fontSize: '0.85rem',
-                            fontWeight: '700',
-                            textTransform: 'uppercase',
-                            letterSpacing: '1px',
-                            cursor: 'pointer',
-                            transition: 'transform 0.2s',
-                            boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
-                        }}
-                        onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-                        onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                    >
-                        LOGOUT
-                    </button>
-                ) : (
-                    <div style={{ display: 'flex', gap: '1rem' }}>
-                        <Link to="/login" className="nav-btn" style={{
-                            textDecoration: 'none',
-                            backgroundColor: '#B0D8F5', // Soft Sky Blue
-                            color: '#1a1a1a',
-                            padding: '0.5rem 1.5rem',
-                            borderRadius: '30px', // Pill shape
-                            fontSize: '0.9rem',
-                            fontWeight: '700',
-                            fontFamily: '"Nunito", sans-serif',
-                            transition: 'transform 0.2s'
-                        }}
-                            onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-                            onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                        >Login</Link>
-                        <Link to="/signup" className="nav-btn" style={{
-                            textDecoration: 'none',
-                            backgroundColor: '#B0D8F5', // Soft Sky Blue
-                            color: '#1a1a1a',
-                            padding: '0.5rem 1.5rem',
-                            borderRadius: '30px', // Pill shape
-                            fontSize: '0.9rem',
-                            fontWeight: '700',
-                            fontFamily: '"Nunito", sans-serif',
-                            transition: 'transform 0.2s'
-                        }}
-                            onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-                            onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                        >Sign Up</Link>
-                    </div>
-                )}
-            </header>
+            <Navbar
+                tools={tools}
+                onToolSelect={handleToolSelect}
+                onReset={handleBackToGrid}
+                session={session}
+                UserAvatarComponent={
+                    <UserAvatar session={session} onLogout={handleLogout} />
+                }
+            />
 
             <main style={{ padding: '3rem 2rem', maxWidth: '1200px', margin: '0 auto' }}>
 
@@ -212,21 +150,27 @@ export default function Home() {
                     <div style={{ textAlign: 'center' }}>
                         <h2 style={{
                             fontFamily: '"Outfit", sans-serif',
-                            fontSize: '2.5rem',
+                            fontSize: '2.2rem',
+                            fontWeight: '400',
                             color: '#1D3557', // Navy Blue
-                            marginBottom: '1rem'
+                            marginBottom: '1rem',
+                            letterSpacing: '-0.5px'
                         }}>
-                            Every tool you need to work with files
+                            {session?.user?.user_metadata?.full_name
+                                ? `Hi ${session.user.user_metadata.full_name.split(' ')[0]}, let's get converting`
+                                : null
+                            }
                         </h2>
                         <p style={{
-                            fontSize: '1.1rem',
-                            color: '#555',
+                            fontSize: '1.5rem',
+                            fontWeight: '600',
+                            color: '#1D3557',
                             marginBottom: '3rem',
                             maxWidth: '700px',
                             marginLeft: 'auto',
                             marginRight: 'auto'
                         }}>
-                            Easily convert, merge, and optimize your files in one place. 100% Free and Secure.
+                            The only toolkit you’ll ever need to convert, edit, and master any file format—from documents to media—completely free and in just a few clicks.
                         </p>
 
                         <div style={{
