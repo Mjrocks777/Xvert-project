@@ -21,8 +21,9 @@ class ConversionService {
         formData.append('target_format', targetFormat);
 
         try {
-            const response = await axios.post(`${this.apiBaseUrl}/image`, formData, {
+            const response = await axios.post(`${this.apiBaseUrl}/api/convert/image`, formData, {
                 responseType: 'blob',
+                timeout: 60000, // 60 seconds
                 headers: {
                     'Content-Type': 'multipart/form-data',
                 },
@@ -46,8 +47,9 @@ class ConversionService {
         formData.append('target_format', targetFormat);
 
         try {
-            const response = await axios.post(`${this.apiBaseUrl}/data`, formData, {
+            const response = await axios.post(`${this.apiBaseUrl}/api/convert/data`, formData, {
                 responseType: 'blob',
+                timeout: 60000, // 60 seconds
                 headers: {
                     'Content-Type': 'multipart/form-data',
                 },
@@ -73,8 +75,9 @@ class ConversionService {
         formData.append('target_format', targetFormat);
 
         try {
-            const response = await axios.post(`${this.apiBaseUrl}/convert/document`, formData, {
+            const response = await axios.post(`${this.apiBaseUrl}/api/convert/document`, formData, {
                 responseType: 'blob',
+                timeout: 60000, // 60 seconds
                 headers: {
                     'Content-Type': 'multipart/form-data',
                 },
@@ -98,8 +101,9 @@ class ConversionService {
         });
 
         try {
-            const response = await axios.post(`${this.apiBaseUrl}/convert/merge`, formData, {
+            const response = await axios.post(`${this.apiBaseUrl}/api/convert/merge`, formData, {
                 responseType: 'blob',
+                timeout: 60000, // 60 seconds
                 headers: {
                     'Content-Type': 'multipart/form-data',
                 },

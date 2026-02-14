@@ -30,3 +30,11 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+
+# Application specific
+backend/history/
+backend/converted_*
+backend/temp_*
+backend/test_*
+backend/*.pdf
+backend/*.docx

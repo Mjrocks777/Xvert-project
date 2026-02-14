@@ -49,9 +49,9 @@ export default function UpdatePassword() {
     return (
         <div style={{
             height: '100vh',
-            width: '100vw',
-            backgroundImage: "url('/reset_bg.png')",
-            backgroundSize: '100% 100%',
+            width: '100%',
+            backgroundImage: "url('/reset_password_bg.png')",
+            backgroundSize: 'cover',
             backgroundPosition: 'center',
             backgroundRepeat: 'no-repeat',
             display: 'flex',

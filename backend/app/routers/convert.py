@@ -12,8 +12,11 @@ API Flow:
 """
 
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
-from fastapi.responses import Response
-from typing import Optional
+from fastapi.responses import Response, FileResponse
+from typing import Optional, List
+import os
+import shutil
+import time
 
 from app.services.image_converter import (
     convert_image,
@@ -34,12 +37,58 @@ from app.utils.file_utils import (
     validate_file_size,
     sanitize_filename,
     get_data_format_from_filename,
+    sanitize_filename,
+    get_data_format_from_filename,
     get_data_output_filename,
+    save_to_history,
+    HISTORY_DIR
 )
 from app.config import settings
 
 
 router = APIRouter()
+
+router = APIRouter()
+
+# History logic moved to file_utils.py
+
+@router.get("/history")
+async def get_history():
+    """List all files in history directory"""
+    try:
+        if not os.path.exists(HISTORY_DIR):
+            return {"files": []}
+            
+        files = []
+        for filename in os.listdir(HISTORY_DIR):
+            file_path = os.path.join(HISTORY_DIR, filename)
+            if os.path.isfile(file_path):
+                stat = os.stat(file_path)
+                files.append({
+                    "name": filename,
+                    "size": stat.st_size,
+                    "created_at": stat.st_ctime,
+                    "modified_at": stat.st_mtime
+                })
+        
+        # Sort by newest first
+        files.sort(key=lambda x: x["created_at"], reverse=True)
+        return {"files": files}
+    except Exception as e:
+        return {"error": str(e), "files": []}
+
+@router.get("/history/{filename}")
+async def download_history_file(filename: str):
+    """Download a specific file from history"""
+    file_path = os.path.join(HISTORY_DIR, sanitize_filename(filename))
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+        
+    return FileResponse(
+        path=file_path,
+        filename=filename,
+        media_type='application/octet-stream' 
+    )
 
 
 @router.post("/image")
@@ -139,6 +188,9 @@ async def convert_image_endpoint(
     # Generate output filename (sanitize to remove unicode chars for HTTP headers)
     output_filename = get_output_filename(file.filename or "converted", target_format)
     output_filename = sanitize_filename(output_filename)
+    
+    # Save to history
+    save_to_history(converted_bytes, output_filename)
     
     # Return the converted image
     return Response(
@@ -272,6 +324,9 @@ async def convert_data_endpoint(
     # Generate output filename
     output_filename = get_data_output_filename(file.filename or "converted", target_format)
     output_filename = sanitize_filename(output_filename)
+
+    # Save to history
+    save_to_history(converted_bytes, output_filename)
     
     # Return the converted data
     return Response(

@@ -199,3 +199,43 @@ def get_data_content_type(format: str) -> str:
     """
     return DATA_CONTENT_TYPES.get(format.lower(), "application/octet-stream")
 
+    return DATA_CONTENT_TYPES.get(format.lower(), "application/octet-stream")
+
+
+# =============================================================================
+# HISTORY MANAGEMENT
+# =============================================================================
+
+HISTORY_DIR = "history"
+if not os.path.exists(HISTORY_DIR):
+    os.makedirs(HISTORY_DIR)
+
+def save_to_history(file_bytes: bytes, filename: str) -> Optional[str]:
+    """
+    Save a copy of the converted file to history directory.
+    
+    Args:
+        file_bytes: Content of the file
+        filename: Name of the file
+        
+    Returns:
+        Path to saved file or None if failed
+    """
+    try:
+        if not os.path.exists(HISTORY_DIR):
+            os.makedirs(HISTORY_DIR)
+            
+        file_path = os.path.join(HISTORY_DIR, filename)
+        # Verify unique filename to prevent overwrite
+        base, ext = os.path.splitext(filename)
+        counter = 1
+        while os.path.exists(file_path):
+            file_path = os.path.join(HISTORY_DIR, f"{base}_{counter}{ext}")
+            counter += 1
+            
+        with open(file_path, "wb") as f:
+            f.write(file_bytes)
+        return os.path.basename(file_path)
+    except Exception as e:
+        print(f"Failed to save history: {e}")
+        return None

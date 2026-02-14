@@ -1,4 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+import os
+from app.utils.file_utils import save_to_history, sanitize_filename
 from fastapi.responses import FileResponse
 from typing import List
 # Note: We removed data_converter to avoid conflict with Saloni's work
@@ -14,6 +16,13 @@ async def convert_document_endpoint(
 ):
     try:
         file_path = await convert_document(file, source_format, target_format)
+        
+        # Save to history
+        with open(file_path, "rb") as f:
+            content = f.read()
+            filename = os.path.basename(file_path)
+            save_to_history(content, filename)
+            
         return FileResponse(file_path, filename=file_path)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -24,6 +33,13 @@ async def merge_documents_endpoint(
 ):
     try:
         file_path = await merge_pdfs(files)
+        
+        # Save to history
+        with open(file_path, "rb") as f:
+            content = f.read()
+            filename = "merged_output.pdf" # This might be temp name, let's stick to it or sanitize
+            save_to_history(content, filename)
+
         return FileResponse(file_path, filename="merged_output.pdf")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
