@@ -55,7 +55,7 @@ export default function Navbar({ tools, onToolSelect, onReset, session, UserAvat
                     <span style={{ fontSize: '1.5rem' }}>🔄</span>
                     <h1 style={{
                         fontFamily: '"Outfit", sans-serif',
-                        fontSize: '1.5rem',
+                        fontSize: '1.6rem',
                         margin: 0,
                         color: 'var(--ag-text)',
                         fontWeight: 700,
