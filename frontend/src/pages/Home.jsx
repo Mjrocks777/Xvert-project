@@ -9,6 +9,8 @@ import ToolIcon from '../components/ToolIcon'
 import Navbar from '../components/Navbar'
 import AntiGravityBackground from '../components/AntiGravityBackground'
 import { useToast } from '../components/ToastContext'
+import { useBatchUpload } from '../hooks/useBatchUpload'
+import ProgressCard from '../components/ProgressCard'
 import { Search, X, FileImage, FileText, Database, Layers, Command, Upload, Sparkles, ArrowRight } from 'lucide-react'
 
 // Spring config
@@ -199,16 +201,21 @@ function RecentConversions() {
 // ============================================
 export default function Home() {
     const navigate = useNavigate()
-    const [file, setFile] = useState(null)
     const [selectedTool, setSelectedTool] = useState(null)
-    const [loading, setLoading] = useState(false)
     const [message, setMessage] = useState('')
     const [session, setSession] = useState(null)
-    const [files, setFiles] = useState([])
-    const [progress, setProgress] = useState(0)
-    const [downloadUrl, setDownloadUrl] = useState(null)
     const [isDraggingOver, setIsDraggingOver] = useState(false)
     const [mascotState, setMascotState] = useState('idle')
+    const { fileStates, batchStatus, startBatch, reset: resetBatch } = useBatchUpload()
+    const [pendingFiles, setPendingFiles] = useState([])
+    const isConverting = ['uploading','processing'].includes(batchStatus)
+    const isDone       = batchStatus === 'done'
+    const fileStatesValues = Object.values(fileStates)
+    const overallProgress = fileStatesValues.length > 0
+        ? Math.round(fileStatesValues.reduce((s,f) => s + (f.progress ?? 0), 0) / fileStatesValues.length)
+        : 0
+    const canConvert = pendingFiles.length > 0 &&
+        (selectedTool?.id !== 'merge-pdf' || pendingFiles.length >= 2)
     // UX enhancement states
     const [searchQuery, setSearchQuery] = useState('')
     const [activeCategory, setActiveCategory] = useState('all')
@@ -260,7 +267,7 @@ export default function Home() {
                 if (searchQuery) setSearchQuery('')
             }
             // Enter → convert (when tool selected and file ready)
-            if (e.key === 'Enter' && selectedTool && (file || files.length >= 2) && !loading && !downloadUrl) {
+            if (e.key === 'Enter' && selectedTool && canConvert && !isConverting && !isDone) {
                 if (document.activeElement.tagName !== 'INPUT') {
                     e.preventDefault()
                     handleConvert()
@@ -269,7 +276,7 @@ export default function Home() {
         }
         window.addEventListener('keydown', handler)
         return () => window.removeEventListener('keydown', handler)
-    }, [selectedTool, file, files, loading, downloadUrl, searchQuery])
+    }, [selectedTool, canConvert, isConverting, isDone, searchQuery])
 
     const tools = [
         // Document Tools
@@ -340,8 +347,8 @@ export default function Home() {
     }
 
     const handleFileChange = (e) => {
-        setDownloadUrl(null)
-        const selectedFile = e.target.files[0]
+        resetBatch()
+        const selectedFiles = Array.from(e.target.files)
 
         const isValidFileType = (file, tool) => {
             if (!file) return false
@@ -350,45 +357,43 @@ export default function Home() {
             return accept === '*' || accept.includes(ext)
         }
 
-        if (selectedTool?.id === 'merge-pdf') {
-            const newFiles = Array.from(e.target.files).filter(f => isValidFileType(f, selectedTool))
-            if (newFiles.length < e.target.files.length) {
-                addToast('Some files were skipped (not PDF)', 'error')
-            }
-            setFiles(prev => [...prev, ...newFiles])
-            setFile(null)
-        } else {
-            if (isValidFileType(selectedFile, selectedTool)) {
-                setFile(selectedFile)
-                setMessage('')
-                setMascotState('fileUploaded')
-                setTimeout(() => setMascotState('idle'), 2000)
-            } else {
-                setFile(null)
-                addToast(`Invalid file type. Expected a ${selectedTool.type.toUpperCase()} file.`, 'error')
-            }
-            setFiles([])
+        const validFiles = selectedFiles.filter(f => isValidFileType(f, selectedTool))
+        if (validFiles.length < selectedFiles.length) {
+            addToast(
+                `${selectedFiles.length - validFiles.length} file(s) skipped — wrong type`,
+                'error'
+            )
+        }
+
+        if (validFiles.length > 0) {
+            setPendingFiles(prev =>
+                selectedTool?.id === 'merge-pdf'
+                    ? [...prev, ...validFiles]   // accumulate for merge
+                    : validFiles                 // replace for all other tools
+            )
+            setMascotState('fileUploaded')
+            setTimeout(() => setMascotState('idle'), 2000)
         }
         e.target.value = ''
     }
 
     const handleRemoveFile = (index) => {
-        setFiles(prev => prev.filter((_, i) => i !== index))
+        setPendingFiles(prev => prev.filter((_, i) => i !== index))
     }
 
     const handleToolSelect = (tool) => {
         setSelectedTool(tool)
-        setFile(null)
+        setPendingFiles([])
+        resetBatch()
         setMessage('')
         setMascotState('idle')
     }
 
     const handleBackToGrid = () => {
         setSelectedTool(null)
-        setFile(null)
-        setFiles([])
+        setPendingFiles([])
+        resetBatch()
         setMessage('')
-        setDownloadUrl(null)
         setMascotState('idle')
     }
 
@@ -402,85 +407,30 @@ export default function Home() {
     }, [])
 
     const handleConvert = async () => {
-        if (selectedTool.id === 'merge-pdf') {
-            if (files.length < 2) {
-                addToast('Please select at least 2 PDF files to merge.', 'error')
-                return
-            }
-        } else if (!file) {
-            addToast('Please select a file first.', 'error')
+        if (!canConvert) {
+            addToast(
+                selectedTool?.id === 'merge-pdf'
+                    ? 'Select at least 2 PDFs to merge.'
+                    : 'Please select a file first.',
+                'error'
+            )
             return
         }
-
-        setLoading(true)
-        setProgress(0)
-        setMessage('')
         setMascotState('converting')
-
-        const progressInterval = setInterval(() => {
-            setProgress(prev => prev >= 95 ? prev : prev + 5)
-        }, 500)
-
-        const timer = setTimeout(() => {
-            addToast('Still processing... complex files need a moment.', 'info')
-        }, 5000)
-
         try {
-            let resultBlob
-
-            if (selectedTool.id === 'merge-pdf') {
-                resultBlob = await conversionService.mergeDocuments(files)
-            } else if (selectedTool.id === 'image-to-pdf') {
-                resultBlob = await conversionService.convertDocument(file, 'image', 'pdf')
-            } else if (selectedTool.type === 'pdf') {
-                resultBlob = await conversionService.convertDocument(file, 'pdf', selectedTool.target)
-            } else if (selectedTool.type === 'image' || selectedTool.type === 'jpg' || selectedTool.type === 'png' || selectedTool.type === 'gif') {
-                resultBlob = await conversionService.convertImage(file, selectedTool.target)
-            } else if (selectedTool.type === 'ocr') {
-                resultBlob = await conversionService.ocrPdf(file)
-            } else if (selectedTool.type === 'docx') {
-                resultBlob = await conversionService.convertDocument(file, 'docx', 'pdf')
-            } else if (selectedTool.type === 'data') {
-                resultBlob = await conversionService.convertData(file, selectedTool.target)
-            } else {
-                clearInterval(progressInterval)
-                clearTimeout(timer)
-                addToast('This tool is currently unavailable.', 'error')
-                setLoading(false)
-                setProgress(0)
-                setMascotState('error')
-                return
-            }
-
-            clearInterval(progressInterval)
-            setProgress(100)
-
-            setTimeout(() => {
-                const url = window.URL.createObjectURL(new Blob([resultBlob]))
-                clearTimeout(timer)
-                setDownloadUrl(url)
-                setLoading(false)
-                setMascotState('success')
-                addToast('Conversion successful! 🎉', 'success')
-                saveRecent(selectedTool.name, selectedTool.target)
-                setTimeout(() => {
-                    setProgress(0)
-                    setMascotState('idle')
-                }, 3000)
-            }, 800)
-
-        } catch (error) {
-            console.error(error)
-            clearInterval(progressInterval)
-            clearTimeout(timer)
-            if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
-                addToast('Conversion timed out. File may be too large.', 'error')
-            } else {
-                addToast('Conversion failed. Please try again.', 'error')
-            }
-            setProgress(0)
-            setLoading(false)
+            await startBatch(pendingFiles, selectedTool.target)
+            setMascotState('success')
+            addToast('Batch complete! 🎉', 'success')
+            pendingFiles.forEach(() => saveRecent(selectedTool.name, selectedTool.target))
+            setTimeout(() => setMascotState('idle'), 3000)
+        } catch (err) {
             setMascotState('error')
+            addToast(
+                err?.code === 'ECONNABORTED' || err?.message?.includes('timeout')
+                    ? 'Timed out — files may be too large.'
+                    : 'Batch conversion failed. Please try again.',
+                'error'
+            )
             setTimeout(() => setMascotState('idle'), 3000)
         }
     }
@@ -703,7 +653,7 @@ export default function Home() {
                                                     whileTap={{ scale: 0.95 }}
                                                     onClick={() => {
                                                         setSelectedTool(tool)
-                                                        setFile(smartFile)
+                                                        setPendingFiles([smartFile])
                                                         setSmartFile(null)
                                                         setSmartMatches([])
                                                         if (smartFileRef.current) smartFileRef.current.value = ''
@@ -1018,13 +968,20 @@ export default function Home() {
                                     fontSize: '0.95rem',
                                 }}>{selectedTool.desc}</p>
 
-                                {/* Orbital Progress (when converting) */}
-                                {loading && (
-                                    <OrbitalProgress progress={progress} />
+                                {/* Orbital Progress (when converting or done) */}
+                                {(isConverting || isDone) && (
+                                    <>
+                                        <OrbitalProgress progress={overallProgress} />
+                                        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(190px,1fr))', gap:'0.75rem', marginBottom:'1.5rem', textAlign: 'left' }}>
+                                            {Object.entries(fileStates).map(([id, state]) => (
+                                                <ProgressCard key={id} filename={state.filename} progress={state.progress} status={state.status} downloadUrl={state.downloadUrl} />
+                                            ))}
+                                        </div>
+                                    </>
                                 )}
 
                                 {/* Drag & Drop Zone */}
-                                {!loading && (
+                                {!isConverting && !isDone && (
                                     <motion.div
                                         animate={isDraggingOver ? {
                                             scale: 1.05,
@@ -1065,23 +1022,23 @@ export default function Home() {
                                             type="file"
                                             accept={getAcceptTypes(selectedTool)}
                                             onChange={handleFileChange}
-                                            multiple={selectedTool.id === 'merge-pdf'}
+                                            multiple={true}
                                             style={{
                                                 position: 'absolute',
                                                 top: 0, left: 0, width: '100%', height: '100%',
                                                 opacity: 0, cursor: 'pointer', zIndex: 5,
                                             }}
                                         />
-                                        {selectedTool.id === 'merge-pdf' && files.length > 0 ? (
+                                        {selectedTool.id === 'merge-pdf' && pendingFiles.length > 0 ? (
                                             <div style={{
                                                 maxHeight: '200px', overflowY: 'auto', width: '100%',
                                                 textAlign: 'left', position: 'relative', zIndex: 10,
                                                 pointerEvents: 'none',
                                             }}>
                                                 <p style={{ fontWeight: 700, color: 'var(--ag-text)', textAlign: 'center', marginBottom: '0.8rem' }}>
-                                                    {files.length} files selected
+                                                    {pendingFiles.length} files selected
                                                 </p>
-                                                {files.map((f, index) => (
+                                                {pendingFiles.map((f, index) => (
                                                     <div key={index} style={{
                                                         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                                                         background: 'var(--ag-card-bg)', backdropFilter: 'blur(8px)',
@@ -1097,8 +1054,8 @@ export default function Home() {
                                                     Click box to add more files
                                                 </div>
                                             </div>
-                                        ) : file ? (
-                                            <FilePreview file={file} />
+                                        ) : pendingFiles.length > 0 ? (
+                                            <FilePreview file={pendingFiles[0]} />
                                         ) : (
                                             <div>
                                                 <motion.div
@@ -1125,33 +1082,62 @@ export default function Home() {
                                 )}
 
                                 {/* Action Buttons */}
-                                {downloadUrl ? (
-                                    <motion.button
-                                        onClick={() => {
-                                            const link = document.createElement('a')
-                                            link.href = downloadUrl
-                                            link.setAttribute('download', `converted_${selectedTool.target === 'pdf' ? 'document' : (files.length > 0 ? 'merged' : file.name.split('.')[0])}.${selectedTool.target}`)
-                                            document.body.appendChild(link)
-                                            link.click()
-                                            link.remove()
-                                        }}
-                                        className="ag-btn-primary"
-                                        whileHover={{ scale: 1.06 }}
-                                        whileTap={{ scale: 0.95 }}
-                                        transition={springBounce}
+                                {isDone ? (
+                                    <motion.div
                                         initial={{ scale: 0.9, opacity: 0 }}
                                         animate={{ scale: 1, opacity: 1 }}
-                                        style={{ display: 'block', margin: '0 auto', minWidth: '200px' }}
+                                        transition={springBounce}
+                                        style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginTop: '1rem', flexWrap: 'wrap' }}
                                     >
-                                        ↓ Download
-                                    </motion.button>
-                                ) : (
+                                        <motion.button
+                                            onClick={() => {
+                                                const completedUrls = Object.values(fileStates)
+                                                    .filter(state => state.status === 'done' && state.downloadUrl)
+                                                completedUrls.forEach((state, index) => {
+                                                    setTimeout(() => {
+                                                        const link = document.createElement('a')
+                                                        link.href = state.downloadUrl
+                                                        link.setAttribute('download', state.filename || `converted_file_${index + 1}.${selectedTool.target}`)
+                                                        document.body.appendChild(link)
+                                                        link.click()
+                                                        link.remove()
+                                                    }, index * 300)
+                                                })
+                                            }}
+                                            className="ag-btn-primary"
+                                            whileHover={{ scale: 1.05 }}
+                                            whileTap={{ scale: 0.95 }}
+                                            style={{
+                                                minWidth: '200px',
+                                                background: 'var(--ag-accent)',
+                                                boxShadow: '0 4px 15px var(--ag-accent-glow)',
+                                                border: '1px solid var(--ag-accent)',
+                                            }}
+                                        >
+                                            ↓ Download All
+                                        </motion.button>
+                                        <motion.button
+                                            onClick={() => { setPendingFiles([]); resetBatch() }}
+                                            whileHover={{ scale: 1.05 }}
+                                            whileTap={{ scale: 0.95 }}
+                                            className="ag-btn-primary"
+                                            style={{
+                                                minWidth: '200px',
+                                                background: 'transparent',
+                                                border: '2px solid var(--ag-glass-border)',
+                                                color: 'var(--ag-text)',
+                                            }}
+                                        >
+                                            + Convert More
+                                        </motion.button>
+                                    </motion.div>
+                                ) : !isConverting && (
                                     <motion.button
                                         onClick={handleConvert}
-                                        disabled={loading || (!file && files.length < 2)}
+                                        disabled={!canConvert}
                                         className="ag-btn-primary"
-                                        whileHover={!(loading || (!file && files.length < 2)) ? { scale: 1.06 } : {}}
-                                        whileTap={!(loading || (!file && files.length < 2)) ? { scale: 0.95 } : {}}
+                                        whileHover={canConvert ? { scale: 1.06 } : {}}
+                                        whileTap={canConvert ? { scale: 0.95 } : {}}
                                         transition={springBounce}
                                         style={{
                                             display: 'block',
@@ -1161,21 +1147,10 @@ export default function Home() {
                                             overflow: 'hidden',
                                         }}
                                     >
-                                        {loading && (
-                                            <motion.div
-                                                initial={{ width: '0%' }}
-                                                animate={{ width: `${progress}%` }}
-                                                style={{
-                                                    position: 'absolute', top: 0, left: 0, height: '100%',
-                                                    background: 'rgba(255,255,255,0.2)', borderRadius: '50px', zIndex: 0,
-                                                }}
-                                                transition={{ ease: 'easeInOut', duration: 0.3 }}
-                                            />
-                                        )}
                                         <span style={{ position: 'relative', zIndex: 1 }}>
-                                            {loading ? `Converting... ${progress}%` : 'Convert'}
+                                            Convert
                                         </span>
-                                        {!loading && (file || files.length >= 2) && (
+                                        {canConvert && (
                                             <span style={{
                                                 marginLeft: '0.5rem',
                                                 fontSize: '0.7rem',

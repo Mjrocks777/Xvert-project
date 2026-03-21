@@ -45,3 +45,6 @@ app.include_router(documents.router, prefix="/api", tags=["documents"])
 
 from app.routers import history
 app.include_router(history.router, prefix="/api/history", tags=["history"])
+
+from app.routers import batch
+app.include_router(batch.router, prefix="/api/batch", tags=["batch-conversion"])
