@@ -1169,7 +1169,7 @@ export default function Home() {
                                                 </motion.div>
 
                                                 {/* Cloud Storage Icons - Below Button */}
-                                                <div style={{ display: 'flex', gap: '1.2rem', alignItems: 'center', justifyContent: 'center' }} onClick={(e) => e.stopPropagation()}>
+                                                <div style={{ display: 'flex', gap: '1.2rem', alignItems: 'center', justifyContent: 'center', position: 'relative', zIndex: 10 }} onClick={(e) => e.stopPropagation()}>
                                                     {/* Divider Above Icons */}
                                                     <div style={{ width: '60px', height: '2px', background: 'linear-gradient(90deg, transparent, var(--ag-glass-border))', opacity: 0.4 }} />
                                                     

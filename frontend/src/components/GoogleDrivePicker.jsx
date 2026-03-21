@@ -9,8 +9,37 @@ const GoogleDrivePicker = ({ onFileSelected, acceptTypes, multiselect = false })
     const borderColor = isDark ? 'rgba(255, 255, 255, 0.22)' : 'rgba(0, 0, 0, 0.12)';
     const brandColor = '#4285F4';
     const [isLoading, setIsLoading] = useState(false);
+    const [scriptsLoaded, setScriptsLoaded] = useState(false);
+
+    React.useEffect(() => {
+        const loadScript = (src) => new Promise((resolve, reject) => {
+            if (document.querySelector(`script[src="${src}"]`)) return resolve();
+            const script = document.createElement('script');
+            script.src = src;
+            script.async = true;
+            script.defer = true;
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
+        });
+
+        // Pre-load both APIs when the component mounts
+        Promise.all([
+            loadScript('https://apis.google.com/js/api.js'),
+            loadScript('https://accounts.google.com/gsi/client')
+        ]).then(() => {
+            window.gapi.load('picker', { callback: () => setScriptsLoaded(true) });
+        }).catch(() => {
+            console.error('Failed to pre-load Google APIs');
+        });
+    }, []);
 
     const handleOpenGoogleDrive = () => {
+        if (!scriptsLoaded) {
+            alert('Google Drive connection is still initializing. Please wait a second and try again.');
+            return;
+        }
+
         setIsLoading(true);
 
         const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
@@ -18,63 +47,68 @@ const GoogleDrivePicker = ({ onFileSelected, acceptTypes, multiselect = false })
 
         if (!clientId || !apiKey) {
             console.error('Google API credentials not configured');
-            alert('Google Drive integration is not configured. Please set VITE_GOOGLE_CLIENT_ID and VITE_GOOGLE_API_KEY in your .env file.');
+            alert('Google Drive integration is not configured. Please set the IDs in your .env file.');
             setIsLoading(false);
             return;
         }
 
-        // Load Google API client library
-        if (!window.gapi) {
-            const script = document.createElement('script');
-            script.src = 'https://apis.google.com/js/api.js';
-            script.async = true;
-            script.defer = true;
-            script.onload = () => initGooglePicker(clientId, apiKey);
-            script.onerror = () => {
-                console.error('Failed to load Google API');
-                alert('Failed to load Google Drive picker');
-                setIsLoading(false);
-            };
-            document.head.appendChild(script);
-        } else {
-            initGooglePicker(clientId, apiKey);
-        }
+        // Now this executes completely synchronously on the click event!
+        requestTokenAndShowPicker(clientId, apiKey);
     };
 
-    const initGooglePicker = (clientId, apiKey) => {
-        window.gapi.load('picker', { callback: () => createPicker(clientId, apiKey) });
-    };
-
-    const createPicker = (clientId, apiKey) => {
-        const view = new window.google.picker.View(window.google.picker.ViewType.DOCS);
-        
-        // Filter by file types based on acceptTypes
-        if (acceptTypes && acceptTypes !== '*') {
-            const mimeTypes = getMimeTypesFromAcceptTypes(acceptTypes);
-            mimeTypes.forEach(mimeType => {
-                view.addMimeType(mimeType);
+    const requestTokenAndShowPicker = (clientId, apiKey) => {
+        try {
+            const tokenClient = window.google.accounts.oauth2.initTokenClient({
+                client_id: clientId,
+                scope: 'https://www.googleapis.com/auth/drive.readonly',
+                callback: (tokenResponse) => {
+                    if (tokenResponse && tokenResponse.access_token) {
+                        createPicker(clientId, apiKey, tokenResponse.access_token);
+                    } else {
+                        setIsLoading(false);
+                        if (tokenResponse?.error !== 'user_canceled') {
+                            alert('Google Authentication failed or was restricted.');
+                        }
+                    }
+                },
             });
+            tokenClient.requestAccessToken();
+        } catch (error) {
+            console.error('Error initializing token client:', error);
+            setIsLoading(false);
+            alert('Failed to initialize Google Authentication. Check your Client ID.');
         }
-
-        const pickerBuilder = new window.google.picker.PickerBuilder()
-            .enableFeature(window.google.picker.Feature.NAV_HIDDEN)
-            .enableFeature(window.google.picker.Feature.MULTISELECT_ENABLED)
-            .setAppId(clientId)
-            .setOAuthToken(getOAuthToken())
-            .addView(view)
-            .setDeveloperKey(apiKey)
-            .setCallback(pickerCallback);
-
-        pickerBuilder.build().setVisible(true);
     };
 
-    const getOAuthToken = () => {
-        // In a real implementation, you would get this from Google Sign-In
-        // For now, we'll attempt to use gapi.auth2
-        if (window.gapi?.auth2?.getAuthInstance?.()) {
-            return window.gapi.auth2.getAuthInstance().currentUser.get().getAuthResponse().id_token;
+    const createPicker = (clientId, apiKey, accessToken) => {
+        try {
+            const view = new window.google.picker.DocsView(window.google.picker.ViewId.DOCS);
+            
+            // Filter by file types based on acceptTypes
+            if (acceptTypes && acceptTypes !== '*') {
+                const mimeTypes = getMimeTypesFromAcceptTypes(acceptTypes);
+                view.setMimeTypes(mimeTypes.join(','));
+            }
+
+            // Google Picker requires just the numeric project ID, not the full client ID string
+            const appId = clientId.split('-')[0];
+
+            const pickerBuilder = new window.google.picker.PickerBuilder()
+                .enableFeature(window.google.picker.Feature.NAV_HIDDEN)
+                .enableFeature(window.google.picker.Feature.MULTISELECT_ENABLED)
+                .setAppId(appId)
+                .setOAuthToken(accessToken)
+                .addView(view)
+                .setDeveloperKey(apiKey)
+                .setCallback(pickerCallback);
+
+            const picker = pickerBuilder.build();
+            picker.setVisible(true);
+        } catch (error) {
+            console.error('Error creating Google Picker widget:', error);
+            setIsLoading(false);
+            alert(`Google Drive connection failed.\n\nPlease ensure the "Google Picker API" is enabled in your Google Cloud Console.\n\nError details: ${error.message || error}`);
         }
-        return null;
     };
 
     const getMimeTypesFromAcceptTypes = (acceptTypes) => {
