@@ -145,26 +145,27 @@ class ConversionService {
     }
 
     /**
-     * OCR a scanned PDF to editable DOCX.
-     * @param {File} file - The scanned PDF file.
-     * @returns {Promise<Blob>} - The DOCX blob.
+     * OCR a document to editable DOCX or get text preview.
+     * @param {File} file - The file to OCR.
+     * @param {string} format - The format to return ('docx' or 'txt').
+     * @returns {Promise<Blob|string>} - The DOCX blob or extracted text.
      */
-    async ocrPdf(file) {
-        const formData = new FormData();
-        formData.append('file', file);
+    async ocrDocument(file, format = 'docx') {
+        const formData = new FormData()
+        formData.append('file', file)
 
         const authHeaders = await this._getAuthHeaders();
 
         try {
-            const response = await axios.post(`${this.apiBaseUrl}/api/convert/ocr`, formData, {
-                responseType: 'blob',
-                timeout: 120000, // OCR can be slow on multi-page PDFs
+            const response = await axios.post(`${this.apiBaseUrl}/api/convert/ocr?format=${format}`, formData, {
+                responseType: format === 'txt' ? 'text' : 'blob',
+                timeout: 120000,
                 headers: {
                     'Content-Type': 'multipart/form-data',
                     ...authHeaders,
-                },
-            });
-            return response.data;
+                }
+            })
+            return response.data
         } catch (error) {
             console.error("OCR conversion failed:", error);
             throw error;

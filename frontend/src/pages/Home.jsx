@@ -11,6 +11,7 @@ import AntiGravityBackground from '../components/AntiGravityBackground'
 import { useToast } from '../components/ToastContext'
 import { useBatchUpload } from '../hooks/useBatchUpload'
 import ProgressCard from '../components/ProgressCard'
+import OcrResultPanel from '../components/OcrResultPanel'
 import { Search, X, FileImage, FileText, Database, Layers, Command, Upload, Sparkles, ArrowRight } from 'lucide-react'
 
 // Spring config
@@ -208,7 +209,11 @@ export default function Home() {
     const [mascotState, setMascotState] = useState('idle')
     const { fileStates, batchStatus, startBatch, reset: resetBatch } = useBatchUpload()
     const [pendingFiles, setPendingFiles] = useState([])
-    const isConverting = ['uploading','processing'].includes(batchStatus)
+    const [resultBlob, setResultBlob] = useState(null)
+    const [extractedText, setExtractedText] = useState(null)
+    const [ocrDone, setOcrDone] = useState(false)
+    const [isOcrConverting, setIsOcrConverting] = useState(false)
+    const isConverting = ['uploading','processing'].includes(batchStatus) || isOcrConverting
     const isDone       = batchStatus === 'done'
     const fileStatesValues = Object.values(fileStates)
     const overallProgress = fileStatesValues.length > 0
@@ -330,7 +335,7 @@ export default function Home() {
     const getAcceptTypes = (tool) => {
         if (!tool) return '*'
         if (tool.id === 'merge-pdf') return '.pdf'
-        if (tool.type === 'ocr') return '.pdf'
+        if (tool.type === 'ocr') return '.pdf,.jpg,.jpeg,.png,.gif,.bmp,.tiff,.webp'
         if (tool.type === 'pdf') return '.pdf'
         if (tool.type === 'image') return '.jpg,.jpeg,.png,.gif'
         if (tool.type === 'jpg') return '.jpg,.jpeg'
@@ -386,6 +391,10 @@ export default function Home() {
         setPendingFiles([])
         resetBatch()
         setMessage('')
+        setResultBlob(null)
+        setExtractedText(null)
+        setOcrDone(false)
+        setIsOcrConverting(false)
         setMascotState('idle')
     }
 
@@ -394,6 +403,10 @@ export default function Home() {
         setPendingFiles([])
         resetBatch()
         setMessage('')
+        setResultBlob(null)
+        setExtractedText(null)
+        setOcrDone(false)
+        setIsOcrConverting(false)
         setMascotState('idle')
     }
 
@@ -418,12 +431,26 @@ export default function Home() {
         }
         setMascotState('converting')
         try {
-            await startBatch(pendingFiles, selectedTool.target)
-            setMascotState('success')
-            addToast('Batch complete! 🎉', 'success')
-            pendingFiles.forEach(() => saveRecent(selectedTool.name, selectedTool.target))
-            setTimeout(() => setMascotState('idle'), 3000)
+            if (selectedTool.type === 'ocr') {
+                setIsOcrConverting(true);
+                const file = pendingFiles[0];
+                const text = await conversionService.ocrDocument(file, 'txt');
+                setExtractedText(text);
+                const blob = await conversionService.ocrDocument(file, 'docx');
+                setResultBlob(blob);
+                setOcrDone(true);
+                setIsOcrConverting(false);
+                setMascotState('success');
+                setTimeout(() => setMascotState('idle'), 3000);
+            } else {
+                await startBatch(pendingFiles, selectedTool.target)
+                setMascotState('success')
+                addToast('Batch complete! 🎉', 'success')
+                pendingFiles.forEach(() => saveRecent(selectedTool.name, selectedTool.target))
+                setTimeout(() => setMascotState('idle'), 3000)
+            }
         } catch (err) {
+            setIsOcrConverting(false);
             setMascotState('error')
             addToast(
                 err?.code === 'ECONNABORTED' || err?.message?.includes('timeout')
@@ -981,7 +1008,7 @@ export default function Home() {
                                 )}
 
                                 {/* Drag & Drop Zone */}
-                                {!isConverting && !isDone && (
+                                {!isConverting && !isDone && !ocrDone && (
                                     <motion.div
                                         animate={isDraggingOver ? {
                                             scale: 1.05,
@@ -1082,7 +1109,20 @@ export default function Home() {
                                 )}
 
                                 {/* Action Buttons */}
-                                {isDone ? (
+                                {selectedTool?.type === 'ocr' && ocrDone ? (
+                                    <OcrResultPanel
+                                        blob={resultBlob}
+                                        filename={pendingFiles[0]?.name || 'document'}
+                                        extractedText={extractedText}
+                                        onReset={() => {
+                                            setOcrDone(false);
+                                            setResultBlob(null);
+                                            setExtractedText(null);
+                                            setPendingFiles([]);
+                                            setMascotState('idle');
+                                        }}
+                                    />
+                                ) : isDone ? (
                                     <motion.div
                                         initial={{ scale: 0.9, opacity: 0 }}
                                         animate={{ scale: 1, opacity: 1 }}

@@ -9,6 +9,7 @@ Returns None if no valid token is present — endpoints remain usable without au
 from fastapi import Request
 from typing import Optional
 from app.services.supabase_service import get_supabase
+from fastapi import HTTPException, status
 
 
 async def get_optional_user(request: Request) -> Optional[str]:
@@ -35,3 +36,16 @@ async def get_optional_user(request: Request) -> Optional[str]:
     except Exception as e:
         print(f"[Auth] Token validation failed: {e}")
         return None
+async def get_current_user(request: Request) -> str:
+    """
+    Strict version of get_optional_user.
+    Raises 401 if no valid session instead of returning None.
+    Used by routes that require authentication.
+    """
+    user_id = await get_optional_user(request)
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+        )
+    return user_id

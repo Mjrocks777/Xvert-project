@@ -16,6 +16,11 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Request
 from fastapi.responses import Response, FileResponse
 from typing import Optional, List
 import os
+if os.name == 'nt':
+    import pytesseract
+    pytesseract.pytesseract.tesseract_cmd = (
+        r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+    )
 
 from app.services.image_converter import (
     convert_image,
@@ -371,6 +376,88 @@ async def convert_data_endpoint(
             "X-Column-Count": str(col_count),
         }
     )
+
+
+# =============================================================================
+# OCR CONVERSION
+# =============================================================================
+
+from fastapi.responses import StreamingResponse
+import io
+import fitz  # PyMuPDF
+from PIL import Image
+import pytesseract
+from docx import Document
+
+@router.post("/ocr")
+async def convert_ocr_endpoint(
+    request: Request,
+    file: UploadFile = File(..., description="File to OCR"),
+    format: Optional[str] = 'docx'
+):
+    """
+    Extract editable text from scanned PDFs or images using OCR.
+    """
+    user_id = await get_optional_user(request)
+
+    try:
+        file_bytes = await file.read()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to read file: {str(e)}")
+
+    if not validate_file_size(len(file_bytes), settings.MAX_FILE_SIZE):
+        max_mb = settings.MAX_FILE_SIZE / (1024 * 1024)
+        raise HTTPException(status_code=413, detail=f"File too large. Maximum size is {max_mb:.0f}MB.")
+
+    extracted_texts = []
+    filename_lower = (file.filename or "").lower()
+    is_pdf = filename_lower.endswith('.pdf')
+
+    try:
+        if is_pdf:
+            pdf_doc = fitz.open(stream=file_bytes, filetype="pdf")
+            for page_num in range(len(pdf_doc)):
+                page = pdf_doc.load_page(page_num)
+                text = page.get_text().strip()
+                if len(text) >= 30:
+                    extracted_texts.append(text)
+                else:
+                    pix = page.get_pixmap(dpi=300)
+                    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                    ocr_text = pytesseract.image_to_string(img).strip()
+                    extracted_texts.append(ocr_text)
+            pdf_doc.close()
+        else:
+            img = Image.open(io.BytesIO(file_bytes))
+            ocr_text = pytesseract.image_to_string(img).strip()
+            extracted_texts.append(ocr_text)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"OCR processing failed: {str(e)}")
+
+    full_text = "\n\n".join(extracted_texts)
+
+    if format == 'txt':
+        return Response(content=full_text, media_type="text/plain")
+
+    # Default to docx
+    doc = Document()
+    doc.add_heading("OCR Extracted Text", level=1)
+    for p_text in extracted_texts:
+        if p_text:
+            doc.add_paragraph(p_text)
+
+    doc_io = io.BytesIO()
+    doc.save(doc_io)
+    doc_io.seek(0)
+
+    output_filename = sanitize_filename(get_output_filename(file.filename or "ocr", "docx"))
+
+    return StreamingResponse(
+        doc_io,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{output_filename}"'}
+    )
+
 
 
 @router.get("/formats")
