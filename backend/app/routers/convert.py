@@ -30,6 +30,7 @@ from app.services.data_converter import (
     get_data_content_type,
     SUPPORTED_DATA_FORMATS,
 )
+from app.services.document_converter import convert_document as _convert_doc
 from app.utils.file_utils import (
     get_format_from_filename,
     get_output_filename,
@@ -498,7 +499,7 @@ async def remote_fetch_convert(
                 suggestions = [fmt for fmt in suggestions if fmt != detected_format]
             elif content_type == "document":
                 if detected_format == "pdf":
-                    suggestions = ["docx", "jpg", "png"]
+                    suggestions = ["docx"]
                 elif detected_format == "docx":
                     suggestions = ["pdf"]
             elif content_type == "data":
@@ -520,23 +521,28 @@ async def remote_fetch_convert(
         if content_type == "image":
             target_format = target_format.lower()
             if not validate_format(target_format):
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid target format '{target_format}'. Allowed: png, jpg, jpeg, gif"
-                )
+                # If it's an image-to-document conversion (like image -> pdf)
+                if target_format == "pdf":
+                    content_type = "document"
+                else:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid target format '{target_format}'. Allowed: png, jpg, jpeg, gif, pdf"
+                    )
 
-            if detected_format == target_format:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Source and target formats are the same ({detected_format}). No conversion needed."
-                )
+            if content_type == "image":
+                if detected_format == target_format:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Source and target formats are the same ({detected_format}). No conversion needed."
+                    )
 
-            converted_bytes, _ = convert_image(
-                file_bytes=file_bytes,
-                source_format=detected_format,
-                target_format=target_format,
-            )
-            output_filename = get_output_filename(file.filename, target_format)
+                converted_bytes, _ = convert_image(
+                    file_bytes=file_bytes,
+                    source_format=detected_format,
+                    target_format=target_format,
+                )
+                output_filename = get_output_filename(file.filename, target_format)
 
         elif content_type == "data":
             target_format = target_format.lower()
@@ -558,21 +564,24 @@ async def remote_fetch_convert(
                 target_format=target_format,
             )
             output_filename = get_data_output_filename(file.filename, target_format)
-
         elif content_type == "document":
-            # For now, only support PDF->DOCX and DOCX->PDF
-            if detected_format == "pdf" and target_format.lower() == "docx":
-                from app.services.document_converter import convert_pdf_to_docx
-                converted_bytes = convert_pdf_to_docx(file_bytes)
-                output_filename = get_output_filename(file.filename, "docx")
-            elif detected_format == "docx" and target_format.lower() == "pdf":
-                from app.services.document_converter import convert_docx_to_pdf
-                converted_bytes = convert_docx_to_pdf(file_bytes)
-                output_filename = get_output_filename(file.filename, "pdf")
-            else:
+            try:
+                # _convert_doc now returns an absolute path to a temp file
+                output_path = await _convert_doc(file_bytes, file.filename or f"remote.{detected_format}", detected_format, target_format)
+                
+                with open(output_path, "rb") as f:
+                    converted_bytes = f.read()
+                
+                if os.path.exists(output_path):
+                    os.remove(output_path)
+                
+                output_filename = get_output_filename(file.filename or f"remote.{detected_format}", target_format)
+            except ValueError as ve:
+                raise HTTPException(status_code=400, detail=str(ve))
+            except Exception as ex:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Unsupported conversion: {detected_format.upper()} to {target_format.upper()}. Supported: PDF→DOCX, DOCX→PDF"
+                    detail=f"Unsupported conversion or failure: {str(ex)}"
                 )
 
         if not converted_bytes:

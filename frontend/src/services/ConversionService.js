@@ -138,6 +138,34 @@ class ConversionService {
             throw error;
         }
     }
+
+    /**
+     * Convert a file from a remote URL.
+     * @param {string} url - The URL of the file to fetch and convert.
+     * @param {string} targetFormat - The target format.
+     * @returns {Promise<Blob>} - The converted file blob.
+     */
+    async remoteConvert(url, targetFormat) {
+        const formData = new FormData();
+        formData.append('url', url);
+        formData.append('target_format', targetFormat);
+
+        try {
+            const response = await fetch(`${this.apiBaseUrl}/api/convert/remote-fetch`, {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({ detail: 'Remote conversion failed' }));
+                throw new Error(err.detail || 'Remote conversion failed');
+            }
+            return await response.blob();
+        } catch (error) {
+            console.error("Remote conversion failed:", error);
+            throw error;
+        }
+    }
 }
 
 const conversionService = new ConversionService();

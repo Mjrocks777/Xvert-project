@@ -1,122 +1,130 @@
-
 import os
-from fastapi import UploadFile
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
-from functools import partial
-from functools import partial
+import tempfile
+import traceback
+import sys
 from pdf2docx import Converter
 from pypdf import PdfWriter
 import fitz  # PyMuPDF
-from pypdf import PdfWriter
-import fitz  # PyMuPDF
 from PIL import Image
-import pythoncom
+try:
+    import pythoncom
+except ImportError:
+    pythoncom = None
 
-async def convert_document(file: UploadFile, source_format: str, target_format: str) -> str:
-    # 1. Save input file
-    temp_filename = f"temp_{file.filename}"
-    with open(temp_filename, "wb") as buffer:
-        buffer.write(await file.read())
+async def convert_document(file_content: bytes, filename: str, source_format: str, target_format: str) -> str:
+    """
+    Converts document bytes to target format and returns the ABSOLUTE path to the result.
+    """
+    # Use a secure temporary directory for all operations
+    temp_dir = tempfile.gettempdir()
+    
+    # Input file
+    suffix = f".{source_format}"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix, dir=temp_dir) as tmp_in:
+        tmp_in.write(file_content)
+        input_path = tmp_in.name
 
-    base_name = os.path.splitext(file.filename)[0]
-    output_filename = f"converted_{base_name}.{target_format}"
+    # Output file
+    output_path = os.path.join(temp_dir, f"converted_{os.path.basename(input_path)}.{target_format}")
 
     def run_conversion():
         try:
-            # --- LOGIC: PDF to Word ---
+            # --- PDF to Word ---
             if source_format == "pdf" and target_format == "docx":
-                cv = Converter(temp_filename)
-                cv.convert(output_filename, start=0, end=None)
+                cv = Converter(input_path)
+                cv.convert(output_path, start=0, end=None)
                 cv.close()
 
-            # --- LOGIC: Word to PDF ---
+            # --- Word to PDF ---
             elif source_format in ["docx", "doc"] and target_format == "pdf":
                 try:
                     from docx2pdf import convert as docx2pdf_convert
                 except ImportError:
-                    print("DEBUG: docx2pdf module not loaded")
                     raise ImportError("docx2pdf module not installed. Please run: pip install docx2pdf pywin32")
 
-                # docx2pdf requires absolute paths usually
-                abs_temp = os.path.abspath(temp_filename)
-                abs_output = os.path.abspath(output_filename)
-                print(f"DEBUG: Converting {abs_temp} to {abs_output}")
-                try:
-                    # Initialize COM for this thread (Critical for FastAPI/Uvicorn)
-                    import pythoncom
+                if pythoncom:
                     pythoncom.CoInitialize()
-                    docx2pdf_convert(abs_temp, abs_output)
-                    print("DEBUG: Conversion successful")
-                except Exception as cx:
-                    print(f"DEBUG: docx2pdf failed: {cx}")
-                    raise cx
+                try:
+                    docx2pdf_convert(input_path, output_path)
                 finally:
-                    # Uninitialize COM
-                    try:
-                        import pythoncom
+                    if pythoncom:
                         pythoncom.CoUninitialize()
-                    except:
-                        pass
 
-            # --- LOGIC: Image to PDF ---
-            elif source_format in ["jpg", "jpeg", "png", "image"] and target_format == "pdf":
-                image = Image.open(temp_filename)
-                if image.mode != 'RGB':
-                    image = image.convert('RGB')
-                image.save(output_filename, "PDF", resolution=100.0)
+            # --- Image to PDF ---
+            elif source_format.lower() in ["jpg", "jpeg", "png", "image"] and target_format == "pdf":
+                with Image.open(input_path) as img:
+                    if img.mode != 'RGB':
+                        img = img.convert('RGB')
+                    img.save(output_path, "PDF", resolution=100.0)
 
-            # --- LOGIC: PDF to Image (First Page Only for MVP) ---
-            elif source_format == "pdf" and target_format in ["jpg", "png"]:
-                doc = fitz.open(temp_filename)
-                page = doc.load_page(0)  # Get first page
+            # --- PDF to Image ---
+            elif source_format == "pdf" and target_format.lower() in ["jpg", "png", "jpeg"]:
+                doc = fitz.open(input_path)
+                page = doc.load_page(0)
                 pix = page.get_pixmap()
-                pix.save(output_filename)
+                pix.save(output_path)
                 doc.close()
                 
             else:
-                raise ValueError(f"Conversion from {source_format} to {target_format} not supported in this module.")
+                raise ValueError(f"Conversion from {source_format} to {target_format} not supported.")
+                
+            # Final check: did we actually create the file?
+            if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+                raise Exception(f"Conversion failed: Output file missing or empty at {output_path}")
+
         except Exception as e:
-            print(f"DEBUG: Run conversion error: {e}")
+            print(f"DEBUG: run_conversion error: {e}", file=sys.stderr)
+            traceback.print_exc()
             raise e
 
     try:
-        # Run synchronous conversion in a separate thread to avoid blocking the event loop
         await asyncio.to_thread(run_conversion)
+    except Exception as e:
+        # Log to file for deep debugging
+        try:
+            with open(os.path.join(temp_dir, "xvert_conversion_error.log"), "a") as f:
+                f.write(f"\n--- ERROR {filename} ---\n{traceback.format_exc()}\n")
+        except: pass
+        raise e
     finally:
         # Cleanup input file
-        if os.path.exists(temp_filename):
-            os.remove(temp_filename)
+        if os.path.exists(input_path):
+            os.remove(input_path)
 
-    return output_filename
+    return output_path
 
-async def merge_pdfs(files: list[UploadFile]) -> str:
+async def merge_pdfs(files) -> str:
+    """
+    Merges multiple PDFs (can be UploadFile objects or a list of dicts with 'content'/'name').
+    """
+    temp_dir = tempfile.gettempdir()
     temp_files = [] 
 
     try:
-        # 1. Write all files to temp storage (IO bound, okay in async)
-        for file in files:
-            temp_name = f"temp_{file.filename}"
-            with open(temp_name, "wb") as f:
-                f.write(await file.read())
-            temp_files.append(temp_name)
+        for i, f in enumerate(files):
+            # Handle both UploadFile (async) and simple objects (sync bytes)
+            content = await f.read() if hasattr(f, 'read') else (f.get('content') if isinstance(f, dict) else None)
+            if content is None: continue
+            
+            t = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf", dir=temp_dir)
+            t.write(content)
+            t.close()
+            temp_files.append(t.name)
 
-        # 2. Run merge in thread (CPU bound)
         def merge_sync():
             merger = PdfWriter()
-            for temp_name in temp_files:
-                merger.append(temp_name)
-            output_filename = "merged_document.pdf"
-            merger.write(output_filename)
+            for tf in temp_files:
+                merger.append(tf)
+            out_path = os.path.join(temp_dir, f"merged_{os.urandom(4).hex()}.pdf")
+            merger.write(out_path)
             merger.close()
-            return output_filename
+            return out_path
 
-        output_filename = await asyncio.to_thread(merge_sync)
+        output_path = await asyncio.to_thread(merge_sync)
+        return output_path
     
     finally:
-        # Cleanup all temp files
-        for f in temp_files:
-            if os.path.exists(f):
-                os.remove(f)
-
-    return output_filename
+        for tf in temp_files:
+            if os.path.exists(tf):
+                os.remove(tf)

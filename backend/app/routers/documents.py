@@ -23,7 +23,8 @@ async def convert_document_endpoint(
         if cloud_url:
             file = fetch_cloud_file(cloud_url, filename or "cloud_document")
             
-        file_path = await convert_document(file, source_format, target_format)
+        content = await file.read()
+        file_path = await convert_document(content, file.filename or "document", source_format, target_format)
         
         # Save to history
         with open(file_path, "rb") as f:
@@ -31,7 +32,7 @@ async def convert_document_endpoint(
             filename = os.path.basename(file_path)
             save_to_history(content, filename)
             
-        return FileResponse(file_path, filename=file_path)
+        return FileResponse(file_path, filename=os.path.basename(file_path))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

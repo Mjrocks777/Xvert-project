@@ -50,7 +50,7 @@ function FilePreview({ file }) {
         if (!file) { setPreview(null); return }
         const ext = file.name.split('.').pop().toLowerCase()
         if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext)) {
-            if (file.isCloudUrl) {
+            if (file.isCloudUrl || file.isRemote) {
                 setPreview(file.url)
             } else {
                 const reader = new FileReader()
@@ -204,6 +204,36 @@ function RecentConversions() {
 // ============================================
 // Main Home Component
 // ============================================
+const tools = [
+    // Document Tools
+    { id: 'pdf-to-word', name: 'PDF to Word', desc: 'Convert your PDF files to editable DOCX documents.', icon: '📄', type: 'pdf', target: 'docx' },
+    { id: 'docx-to-pdf', name: 'Word to PDF', desc: 'Convert DOCX files to PDF documents.', icon: '📝', type: 'docx', target: 'pdf' },
+    { id: 'image-to-pdf', name: 'Image to PDF', desc: 'Convert JPG, PNG, or GIF images into PDF documents.', icon: '🖼️', type: 'image', target: 'pdf' },
+    { id: 'merge-pdf', name: 'Merge PDF', desc: 'Combine multiple PDFs into one unified document.', icon: '🔗', type: 'merge', target: 'pdf' },
+    { id: 'pdf-to-jpg', name: 'PDF to JPG', desc: 'Convert PDF pages to JPG images.', icon: 'fz', type: 'pdf', target: 'jpg' },
+    { id: 'pdf-to-png', name: 'PDF to PNG', desc: 'Convert PDF pages to PNG images.', icon: 'fz', type: 'pdf', target: 'png' },
+    // Image Tools
+    { id: 'jpg-to-png', name: 'JPG to PNG', desc: 'Convert JPG images to PNG format.', icon: '📷', type: 'jpg', target: 'png' },
+    { id: 'png-to-jpg', name: 'PNG to JPG', desc: 'Convert PNG images to JPG format.', icon: '📸', type: 'png', target: 'jpg' },
+    { id: 'jpg-to-gif', name: 'JPG to GIF', desc: 'Convert JPG images to GIF format.', icon: '👾', type: 'jpg', target: 'gif' },
+    { id: 'png-to-gif', name: 'PNG to GIF', desc: 'Convert PNG images to GIF format.', icon: '👾', type: 'png', target: 'gif' },
+    { id: 'gif-to-jpg', name: 'GIF to JPG', desc: 'Convert GIF images to JPG format.', icon: '📷', type: 'gif', target: 'jpg' },
+    { id: 'gif-to-png', name: 'GIF to PNG', desc: 'Convert GIF images to PNG format.', icon: '📸', type: 'gif', target: 'png' },
+    // Data Tools
+    { id: 'json-to-csv', name: 'JSON to CSV', desc: 'Convert JSON data to CSV.', icon: '📊', type: 'data', target: 'csv' },
+    { id: 'csv-to-json', name: 'CSV to JSON', desc: 'Convert CSV rows to JSON.', icon: '📋', type: 'data', target: 'json' },
+    { id: 'excel-to-csv', name: 'Excel to CSV', desc: 'Convert XLSX sheets to CSV.', icon: 'x', type: 'data', target: 'csv' },
+    { id: 'csv-to-excel', name: 'CSV to Excel', desc: 'Convert CSV to Excel XLSX.', icon: 'x', type: 'data', target: 'xlsx' },
+    { id: 'excel-to-json', name: 'Excel to JSON', desc: 'Convert Excel to JSON data.', icon: 'x', type: 'data', target: 'json' },
+    { id: 'json-to-excel', name: 'JSON to Excel', desc: 'Convert JSON to Excel XLSX.', icon: 'x', type: 'data', target: 'xlsx' },
+    { id: 'xml-to-json', name: 'XML to JSON', desc: 'Convert XML to JSON format.', icon: '📋', type: 'data', target: 'json' },
+    { id: 'json-to-xml', name: 'JSON to XML', desc: 'Convert JSON to XML format.', icon: '🧩', type: 'data', target: 'xml' },
+    { id: 'xml-to-csv', name: 'XML to CSV', desc: 'Convert XML to CSV format.', icon: '📊', type: 'data', target: 'csv' },
+    { id: 'csv-to-xml', name: 'CSV to XML', desc: 'Convert CSV to XML format.', icon: '🧩', type: 'data', target: 'xml' },
+    { id: 'xml-to-excel', name: 'XML to Excel', desc: 'Convert XML to Excel XLSX.', icon: 'x', type: 'data', target: 'xlsx' },
+    { id: 'excel-to-xml', name: 'Excel to XML', desc: 'Convert Excel to XML format.', icon: '🧩', type: 'data', target: 'xml' },
+]
+
 export default function Home() {
     const navigate = useNavigate()
     const [file, setFile] = useState(null)
@@ -277,36 +307,6 @@ export default function Home() {
         window.addEventListener('keydown', handler)
         return () => window.removeEventListener('keydown', handler)
     }, [selectedTool, file, files, loading, downloadUrl, searchQuery])
-
-    const tools = [
-        // Document Tools
-        { id: 'pdf-to-word', name: 'PDF to Word', desc: 'Convert your PDF files to editable DOCX documents.', icon: '📄', type: 'pdf', target: 'docx' },
-        { id: 'docx-to-pdf', name: 'Word to PDF', desc: 'Convert DOCX files to PDF documents.', icon: '📝', type: 'docx', target: 'pdf' },
-        { id: 'image-to-pdf', name: 'Image to PDF', desc: 'Convert JPG, PNG, or GIF images into PDF documents.', icon: '🖼️', type: 'image', target: 'pdf' },
-        { id: 'merge-pdf', name: 'Merge PDF', desc: 'Combine multiple PDFs into one unified document.', icon: '🔗', type: 'merge', target: 'pdf' },
-        { id: 'pdf-to-jpg', name: 'PDF to JPG', desc: 'Convert PDF pages to JPG images.', icon: 'fz', type: 'pdf', target: 'jpg' },
-        { id: 'pdf-to-png', name: 'PDF to PNG', desc: 'Convert PDF pages to PNG images.', icon: 'fz', type: 'pdf', target: 'png' },
-        // Image Tools
-        { id: 'jpg-to-png', name: 'JPG to PNG', desc: 'Convert JPG images to PNG format.', icon: '📷', type: 'jpg', target: 'png' },
-        { id: 'png-to-jpg', name: 'PNG to JPG', desc: 'Convert PNG images to JPG format.', icon: '📸', type: 'png', target: 'jpg' },
-        { id: 'jpg-to-gif', name: 'JPG to GIF', desc: 'Convert JPG images to GIF format.', icon: '👾', type: 'jpg', target: 'gif' },
-        { id: 'png-to-gif', name: 'PNG to GIF', desc: 'Convert PNG images to GIF format.', icon: '👾', type: 'png', target: 'gif' },
-        { id: 'gif-to-jpg', name: 'GIF to JPG', desc: 'Convert GIF images to JPG format.', icon: '📷', type: 'gif', target: 'jpg' },
-        { id: 'gif-to-png', name: 'GIF to PNG', desc: 'Convert GIF images to PNG format.', icon: '📸', type: 'gif', target: 'png' },
-        // Data Tools
-        { id: 'json-to-csv', name: 'JSON to CSV', desc: 'Convert JSON data to CSV.', icon: '📊', type: 'data', target: 'csv' },
-        { id: 'csv-to-json', name: 'CSV to JSON', desc: 'Convert CSV rows to JSON.', icon: '📋', type: 'data', target: 'json' },
-        { id: 'excel-to-csv', name: 'Excel to CSV', desc: 'Convert XLSX sheets to CSV.', icon: 'x', type: 'data', target: 'csv' },
-        { id: 'csv-to-excel', name: 'CSV to Excel', desc: 'Convert CSV to Excel XLSX.', icon: 'x', type: 'data', target: 'xlsx' },
-        { id: 'excel-to-json', name: 'Excel to JSON', desc: 'Convert Excel to JSON data.', icon: 'x', type: 'data', target: 'json' },
-        { id: 'json-to-excel', name: 'JSON to Excel', desc: 'Convert JSON to Excel XLSX.', icon: 'x', type: 'data', target: 'xlsx' },
-        { id: 'xml-to-json', name: 'XML to JSON', desc: 'Convert XML to JSON format.', icon: '📋', type: 'data', target: 'json' },
-        { id: 'json-to-xml', name: 'JSON to XML', desc: 'Convert JSON to XML format.', icon: '🧩', type: 'data', target: 'xml' },
-        { id: 'xml-to-csv', name: 'XML to CSV', desc: 'Convert XML to CSV format.', icon: '📊', type: 'data', target: 'csv' },
-        { id: 'csv-to-xml', name: 'CSV to XML', desc: 'Convert CSV to XML format.', icon: '🧩', type: 'data', target: 'xml' },
-        { id: 'xml-to-excel', name: 'XML to Excel', desc: 'Convert XML to Excel XLSX.', icon: 'x', type: 'data', target: 'xlsx' },
-        { id: 'excel-to-xml', name: 'Excel to XML', desc: 'Convert Excel to XML format.', icon: '🧩', type: 'data', target: 'xml' },
-    ]
 
     // Filtered tools
     const filteredTools = useMemo(() => {
@@ -411,15 +411,13 @@ export default function Home() {
         }
     }
 
-    const handleRemoteFileFetched = (fetchedFile) => {
+    const handleRemoteUrlSelected = (remoteFileInfo) => {
         setDownloadUrl(null)
         if (selectedTool?.id === 'merge-pdf') {
-            // For merge-pdf, add to files array
-            setFiles(prev => [...prev, fetchedFile])
+            setFiles(prev => [...prev, remoteFileInfo])
             setFile(null)
         } else {
-            // For single file tools, set as the main file
-            setFile(fetchedFile)
+            setFile(remoteFileInfo)
             setFiles([])
             setMessage('')
             setMascotState('fileUploaded')
@@ -479,7 +477,9 @@ export default function Home() {
         try {
             let resultBlob
 
-            if (selectedTool.id === 'merge-pdf') {
+            if (file && file.isRemote) {
+                resultBlob = await conversionService.remoteConvert(file.url, selectedTool.target)
+            } else if (selectedTool.id === 'merge-pdf') {
                 resultBlob = await conversionService.mergeDocuments(files)
             } else if (selectedTool.id === 'image-to-pdf') {
                 resultBlob = await conversionService.convertDocument(file, 'image', 'pdf')
@@ -1248,7 +1248,20 @@ export default function Home() {
                                     {/* Remote Fetch Component (moved outside dropzone to be interactive) */}
                                     {!downloadUrl && (
                                         <RemoteFetch
-                                            onFileFetched={handleRemoteFileFetched}
+                                            targetFormat={selectedTool?.target || tools.find(t => t.id === selectedTool?.id)?.target}
+                                            allowedSourceFormats={(() => {
+                                                const tool = selectedTool;
+                                                if (!tool) return null;
+                                                if (tool.id === 'merge-pdf' || tool.type === 'pdf') return ['pdf'];
+                                                if (tool.type === 'docx') return ['docx'];
+                                                if (tool.type === 'image') return ['png', 'jpg', 'jpeg', 'gif'];
+                                                if (tool.type === 'jpg') return ['jpg', 'jpeg'];
+                                                if (tool.type === 'png') return ['png'];
+                                                if (tool.type === 'gif') return ['gif'];
+                                                if (tool.type === 'data') return ['json', 'csv', 'xlsx', 'xml'];
+                                                return null;
+                                            })()}
+                                            onUrlSelected={handleRemoteUrlSelected}
                                             isConverting={loading}
                                         />
                                     )}

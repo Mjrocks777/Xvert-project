@@ -8,58 +8,41 @@ import ToolIcon from '../components/ToolIcon'
 import Navbar from '../components/Navbar'
 import DropboxPicker from '../components/DropboxPicker'
 import GoogleDrivePicker from '../components/GoogleDrivePicker'
+import RemoteFetch from '../components/RemoteFetch'
+
+const tools = [
+    // Document Tools
+    { id: 'pdf-to-word', name: 'PDF to Word', desc: 'Convert PDFs to editable DOCX.', icon: '📄', type: 'pdf', target: 'docx' },
+    { id: 'docx-to-pdf', name: 'Word to PDF', desc: 'Convert DOCX files to PDF.', icon: '📝', type: 'docx', target: 'pdf' },
+    { id: 'image-to-pdf', name: 'Image to PDF', desc: 'JPG, PNG, GIF to PDF.', icon: '🖼️', type: 'image', target: 'pdf' },
+    { id: 'merge-pdf', name: 'Merge PDF', desc: 'Combine multiple PDFs into one.', icon: '🔗', type: 'merge', target: 'pdf' },
+    { id: 'pdf-to-jpg', name: 'PDF to JPG', desc: 'Extract PDF pages as JPGs.', icon: 'fz', type: 'pdf', target: 'jpg' },
+    { id: 'pdf-to-png', name: 'PDF to PNG', desc: 'Extract PDF pages as PNGs.', icon: 'fz', type: 'pdf', target: 'png' },
+
+    // Image Tools
+    { id: 'jpg-to-png', name: 'JPG to PNG', desc: 'Convert JPG to transparent PNG.', icon: '📷', type: 'jpg', target: 'png' },
+    { id: 'png-to-jpg', name: 'PNG to JPG', desc: 'Convert PNG to standard JPG.', icon: '📸', type: 'png', target: 'jpg' },
+    { id: 'jpg-to-gif', name: 'JPG to GIF', desc: 'Animated GIF from JPGs.', icon: '👾', type: 'jpg', target: 'gif' },
+    { id: 'png-to-gif', name: 'PNG to GIF', desc: 'Animated GIF from PNGs.', icon: '👾', type: 'png', target: 'gif' },
+    { id: 'gif-to-jpg', name: 'GIF to JPG', desc: 'Static JPG from GIF.', icon: '📸', type: 'gif', target: 'jpg' },
+    { id: 'gif-to-png', name: 'GIF to PNG', desc: 'Static PNG from GIF.', icon: '📷', type: 'gif', target: 'png' },
+
+    // Data Tools
+    { id: 'json-to-csv', name: 'JSON to CSV', desc: 'Convert JSON data to CSV.', icon: '📊', type: 'data', target: 'csv' },
+    { id: 'csv-to-json', name: 'CSV to JSON', desc: 'Convert CSV rows to JSON.', icon: '📋', type: 'data', target: 'json' },
+    { id: 'excel-to-csv', name: 'Excel to CSV', desc: 'Convert XLSX sheets to CSV.', icon: 'x', type: 'data', target: 'csv' },
+    { id: 'csv-to-excel', name: 'CSV to Excel', desc: 'Convert CSV to Excel XLSX.', icon: 'x', type: 'data', target: 'xlsx' },
+    { id: 'excel-to-json', name: 'Excel to JSON', desc: 'Convert Excel to JSON data.', icon: 'x', type: 'data', target: 'json' },
+    { id: 'json-to-excel', name: 'JSON to Excel', desc: 'Convert JSON to Excel XLSX.', icon: 'x', type: 'data', target: 'xlsx' },
+    { id: 'xml-to-json', name: 'XML to JSON', desc: 'Convert XML to JSON format.', icon: '📋', type: 'data', target: 'json' },
+    { id: 'json-to-xml', name: 'JSON to XML', desc: 'Convert JSON to XML format.', icon: '🧩', type: 'data', target: 'xml' },
+    { id: 'xml-to-csv', name: 'XML to CSV', desc: 'Convert XML to CSV format.', icon: '📊', type: 'data', target: 'csv' },
+    { id: 'csv-to-xml', name: 'CSV to XML', desc: 'Convert CSV to XML format.', icon: '🧩', type: 'data', target: 'xml' },
+    { id: 'xml-to-excel', name: 'XML to Excel', desc: 'Convert XML to Excel XLSX.', icon: 'x', type: 'data', target: 'xlsx' },
+    { id: 'excel-to-xml', name: 'Excel to XML', desc: 'Convert Excel to XML format.', icon: '🧩', type: 'data', target: 'xml' },
+]
 
 export default function Dashboard() {
-    const navigate = useNavigate()
-    const [file, setFile] = useState(null)
-    const [selectedTool, setSelectedTool] = useState(null)
-    const [loading, setLoading] = useState(false)
-    const [message, setMessage] = useState('')
-    const [session, setSession] = useState(null)
-    const [files, setFiles] = useState([])
-    const [progress, setProgress] = useState(0)
-    const [downloadUrl, setDownloadUrl] = useState(null)
-
-    useEffect(() => {
-        authService.getSession().then(({ data: { session } }) => {
-            setSession(session)
-            if (!session) {
-                navigate('/login') // Redirect if not logged in, since this IS the dashboard
-            }
-        })
-    }, [navigate])
-
-    const tools = [
-        // Document Tools
-        { id: 'pdf-to-word', name: 'PDF to Word', desc: 'Convert PDFs to editable DOCX.', icon: '📄', type: 'pdf', target: 'docx' },
-        { id: 'docx-to-pdf', name: 'Word to PDF', desc: 'Convert DOCX files to PDF.', icon: '📝', type: 'docx', target: 'pdf' },
-        { id: 'image-to-pdf', name: 'Image to PDF', desc: 'JPG, PNG, GIF to PDF.', icon: '🖼️', type: 'image', target: 'pdf' },
-        { id: 'merge-pdf', name: 'Merge PDF', desc: 'Combine multiple PDFs into one.', icon: '🔗', type: 'merge', target: 'pdf' },
-        { id: 'pdf-to-jpg', name: 'PDF to JPG', desc: 'Extract PDF pages as JPGs.', icon: 'fz', type: 'pdf', target: 'jpg' },
-        { id: 'pdf-to-png', name: 'PDF to PNG', desc: 'Extract PDF pages as PNGs.', icon: 'fz', type: 'pdf', target: 'png' },
-
-        // Image Tools
-        { id: 'jpg-to-png', name: 'JPG to PNG', desc: 'Convert JPG to transparent PNG.', icon: '📷', type: 'jpg', target: 'png' },
-        { id: 'png-to-jpg', name: 'PNG to JPG', desc: 'Convert PNG to standard JPG.', icon: '📸', type: 'png', target: 'jpg' },
-        { id: 'jpg-to-gif', name: 'JPG to GIF', desc: 'Animated GIF from JPGs.', icon: '👾', type: 'jpg', target: 'gif' },
-        { id: 'png-to-gif', name: 'PNG to GIF', desc: 'Animated GIF from PNGs.', icon: '👾', type: 'png', target: 'gif' },
-        { id: 'gif-to-jpg', name: 'GIF to JPG', desc: 'Static JPG from GIF.', icon: '📸', type: 'gif', target: 'jpg' },
-        { id: 'gif-to-png', name: 'GIF to PNG', desc: 'Static PNG from GIF.', icon: '📷', type: 'gif', target: 'png' },
-
-        // Data Tools
-        { id: 'json-to-csv', name: 'JSON to CSV', desc: 'Convert JSON data to CSV.', icon: '📊', type: 'data', target: 'csv' },
-        { id: 'csv-to-json', name: 'CSV to JSON', desc: 'Convert CSV rows to JSON.', icon: '📋', type: 'data', target: 'json' },
-        { id: 'excel-to-csv', name: 'Excel to CSV', desc: 'Convert XLSX sheets to CSV.', icon: 'x', type: 'data', target: 'csv' },
-        { id: 'csv-to-excel', name: 'CSV to Excel', desc: 'Convert CSV to Excel XLSX.', icon: 'x', type: 'data', target: 'xlsx' },
-        { id: 'excel-to-json', name: 'Excel to JSON', desc: 'Convert Excel to JSON data.', icon: 'x', type: 'data', target: 'json' },
-        { id: 'json-to-excel', name: 'JSON to Excel', desc: 'Convert JSON to Excel XLSX.', icon: 'x', type: 'data', target: 'xlsx' },
-        { id: 'xml-to-json', name: 'XML to JSON', desc: 'Convert XML to JSON format.', icon: '📋', type: 'data', target: 'json' },
-        { id: 'json-to-xml', name: 'JSON to XML', desc: 'Convert JSON to XML format.', icon: '🧩', type: 'data', target: 'xml' },
-        { id: 'xml-to-csv', name: 'XML to CSV', desc: 'Convert XML to CSV format.', icon: '📊', type: 'data', target: 'csv' },
-        { id: 'csv-to-xml', name: 'CSV to XML', desc: 'Convert CSV to XML format.', icon: '🧩', type: 'data', target: 'xml' },
-        { id: 'xml-to-excel', name: 'XML to Excel', desc: 'Convert XML to Excel XLSX.', icon: 'x', type: 'data', target: 'xlsx' },
-        { id: 'excel-to-xml', name: 'Excel to XML', desc: 'Convert Excel to XML format.', icon: '🧩', type: 'data', target: 'xml' },
-    ]
 
     const getAcceptTypes = (tool) => {
         if (!tool) return '*'
@@ -144,6 +127,7 @@ export default function Dashboard() {
         setSelectedTool(tool)
         setFile(null)
         setMessage('')
+        setShowRemoteFetch(false)
     }
 
     const handleBackToGrid = () => {
@@ -152,6 +136,7 @@ export default function Dashboard() {
         setFiles([])
         setMessage('')
         setDownloadUrl(null)
+        setShowRemoteFetch(false)
     }
 
     const handleConvert = async () => {
@@ -183,7 +168,9 @@ export default function Dashboard() {
         try {
             let resultBlob;
 
-            if (selectedTool.id === 'merge-pdf') {
+            if (file && file.isRemote) {
+                resultBlob = await conversionService.remoteConvert(file.url, selectedTool.target);
+            } else if (selectedTool.id === 'merge-pdf') {
                 resultBlob = await conversionService.mergeDocuments(files);
             } else if (selectedTool.id === 'image-to-pdf') {
                 resultBlob = await conversionService.convertDocument(file, 'image', 'pdf');
@@ -472,11 +459,65 @@ export default function Dashboard() {
                                         )}
 
                                         <p style={{ color: '#666', fontSize: '0.9rem', margin: 0 }}>or drag and drop here</p>
+
+                                        {/* Remote Fetch Toggle */}
+                                        <div style={{ width: '100%', textAlign: 'center', marginTop: '0.5rem' }}>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); e.preventDefault(); setShowRemoteFetch(prev => !prev); }}
+                                                style={{
+                                                    background: 'none',
+                                                    border: '1px solid #A8DADC',
+                                                    borderRadius: '20px',
+                                                    padding: '0.4rem 1.2rem',
+                                                    color: '#1D3557',
+                                                    cursor: 'pointer',
+                                                    fontSize: '0.85rem',
+                                                    fontWeight: '600',
+                                                    transition: 'all 0.2s',
+                                                }}
+                                                onMouseOver={(e) => { e.currentTarget.style.background = '#E8F5FD'; }}
+                                                onMouseOut={(e) => { e.currentTarget.style.background = 'none'; }}
+                                            >
+                                                🌐 {showRemoteFetch ? 'Hide URL Fetch' : 'Fetch from URL'}
+                                            </button>
+                                        </div>
                                     </div>
                                 )}
                             </div>
 
-                            {/* Progress bar removed as the button now handles the animation */}
+                            {/* Remote Fetch Panel */}
+                            {showRemoteFetch && (() => {
+                                // Derive which source file types are valid for this tool
+                                const getAllowedFormats = (tool) => {
+                                    if (!tool) return null;
+                                    if (tool.id === 'merge-pdf' || tool.type === 'pdf') return ['pdf'];
+                                    if (tool.type === 'docx') return ['docx'];
+                                    if (tool.type === 'image') return ['png', 'jpg', 'jpeg', 'gif'];
+                                    if (tool.type === 'jpg') return ['jpg', 'jpeg'];
+                                    if (tool.type === 'png') return ['png'];
+                                    if (tool.type === 'gif') return ['gif'];
+                                    if (tool.type === 'data') return ['json', 'csv', 'xlsx', 'xml'];
+                                    return null;
+                                };
+                                const currentTarget = selectedTool.target || tools.find(t => t.id === selectedTool.id)?.target;
+                                console.log('Dashboard: Render RemoteFetch for', selectedTool.id, 'target:', currentTarget);
+                                
+                                return (
+                                    <div style={{ marginBottom: '1.5rem' }}>
+                                        <RemoteFetch
+                                            targetFormat={currentTarget}
+                                            allowedSourceFormats={getAllowedFormats(selectedTool)}
+                                            onUrlSelected={(remoteFileInfo) => {
+                                                setFile(remoteFileInfo);
+                                                setFiles([]);
+                                                setShowRemoteFetch(false);
+                                                setMessage('');
+                                            }}
+                                            isConverting={loading}
+                                        />
+                                    </div>
+                                );
+                            })()}
 
 
                             {downloadUrl ? (
