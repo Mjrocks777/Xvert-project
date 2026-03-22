@@ -375,3 +375,237 @@ async def get_data_formats():
         }
     }
 
+
+# =============================================================================
+# REMOTE FETCH ENDPOINTS
+# =============================================================================
+
+@router.post("/remote-fetch")
+async def remote_fetch_convert(
+    url: str = Form(..., description="URL of the file to fetch and convert"),
+    target_format: Optional[str] = Form(None, description="Target format (optional - auto-detected if not provided)"),
+):
+    """
+    Fetch a file from a URL and convert it to a different format.
+    
+    This endpoint:
+    1. Downloads the file from the provided URL
+    2. Auto-detects the file type
+    3. Converts it to the target format (or suggests options if not specified)
+    4. Returns the converted file
+    
+    **Supported URLs**: Any publicly accessible HTTP/HTTPS URL
+    **Supported formats**: Images (PNG, JPG, JPEG, GIF), Documents (PDF, DOCX), Data (JSON, CSV, XLSX, XML)
+    
+    **Examples**:
+    - Google Drive: https://drive.google.com/file/d/FILE_ID/view
+    - Dropbox: https://www.dropbox.com/s/FILE_ID/filename.pdf
+    - Direct links: https://example.com/image.png
+    
+    **Notes**:
+    - Large files may take time to download
+    - Some cloud services require special sharing settings
+    - Google Drive links need to be set to "Anyone with the link can view"
+    """
+    if not url or not url.startswith(('http://', 'https://')):
+        raise HTTPException(status_code=400, detail="Invalid URL. Must be a valid HTTP/HTTPS URL.")
+
+    try:
+        # Fetch the file from URL
+        filename = url.split('/')[-1] or "remote_file"
+        if '?' in filename:
+            filename = filename.split('?')[0]
+        if not filename or '.' not in filename:
+            filename = "remote_file"
+
+        file = fetch_cloud_file(url, filename)
+
+        # Read file contents
+        file_bytes = await file.read()
+
+        # Validate file size
+        if not validate_file_size(len(file_bytes), settings.MAX_FILE_SIZE):
+            max_mb = settings.MAX_FILE_SIZE / (1024 * 1024)
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large. Maximum size is {max_mb:.0f}MB."
+            )
+
+        # Auto-detect file type from content and filename
+        detected_format = None
+        content_type = None
+
+        # Check filename extension first
+        filename_lower = file.filename.lower()
+
+        # Image formats
+        if filename_lower.endswith(('.png', '.jpg', '.jpeg', '.gif')):
+            detected_format = get_format_from_filename(file.filename)
+            content_type = "image"
+        # Data formats
+        elif filename_lower.endswith(('.json', '.csv', '.xlsx', '.xml')):
+            detected_format = get_data_format_from_filename(file.filename)
+            content_type = "data"
+        # Document formats (basic detection)
+        elif filename_lower.endswith(('.pdf', '.docx')):
+            if filename_lower.endswith('.pdf'):
+                detected_format = "pdf"
+                content_type = "document"
+            elif filename_lower.endswith('.docx'):
+                detected_format = "docx"
+                content_type = "document"
+
+        # If we couldn't detect from filename, try content analysis
+        if not detected_format:
+            # Check for common file signatures
+            if file_bytes.startswith(b'\x89PNG'):
+                detected_format = "png"
+                content_type = "image"
+            elif file_bytes.startswith(b'\xff\xd8'):
+                detected_format = "jpg"
+                content_type = "image"
+            elif file_bytes.startswith(b'GIF8'):
+                detected_format = "gif"
+                content_type = "image"
+            elif file_bytes.startswith(b'%PDF'):
+                detected_format = "pdf"
+                content_type = "document"
+            elif file_bytes.startswith(b'PK\x03\x04'):  # ZIP signature (DOCX/XLSX)
+                if b'word/' in file_bytes[:1000]:  # DOCX
+                    detected_format = "docx"
+                    content_type = "document"
+                elif b'xl/' in file_bytes[:1000]:  # XLSX
+                    detected_format = "xlsx"
+                    content_type = "data"
+            elif file_bytes.strip().startswith(b'{') or file_bytes.strip().startswith(b'['):
+                detected_format = "json"
+                content_type = "data"
+            elif b',' in file_bytes[:100]:  # Simple CSV detection
+                detected_format = "csv"
+                content_type = "data"
+
+        if not detected_format:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not detect file type. Supported formats: PNG, JPG, GIF, PDF, DOCX, JSON, CSV, XLSX, XML"
+            )
+
+        # If no target format specified, suggest conversions
+        if not target_format:
+            suggestions = []
+            if content_type == "image":
+                suggestions = ["png", "jpg", "gif"]
+                suggestions = [fmt for fmt in suggestions if fmt != detected_format]
+            elif content_type == "document":
+                if detected_format == "pdf":
+                    suggestions = ["docx", "jpg", "png"]
+                elif detected_format == "docx":
+                    suggestions = ["pdf"]
+            elif content_type == "data":
+                suggestions = ["json", "csv", "xlsx", "xml"]
+                suggestions = [fmt for fmt in suggestions if fmt != detected_format]
+
+            return {
+                "detected_format": detected_format,
+                "content_type": content_type,
+                "file_size": len(file_bytes),
+                "suggested_conversions": suggestions,
+                "message": f"File detected as {detected_format.upper()}. Choose a target format to convert."
+            }
+
+        # Perform conversion based on content type
+        converted_bytes = None
+        output_filename = None
+
+        if content_type == "image":
+            target_format = target_format.lower()
+            if not validate_format(target_format):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid target format '{target_format}'. Allowed: png, jpg, jpeg, gif"
+                )
+
+            if detected_format == target_format:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Source and target formats are the same ({detected_format}). No conversion needed."
+                )
+
+            converted_bytes, _ = convert_image(
+                file_bytes=file_bytes,
+                source_format=detected_format,
+                target_format=target_format,
+            )
+            output_filename = get_output_filename(file.filename, target_format)
+
+        elif content_type == "data":
+            target_format = target_format.lower()
+            if not validate_data_format(target_format):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid target format '{target_format}'. Allowed: json, csv, xlsx, xml"
+                )
+
+            if detected_format == target_format:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Source and target formats are the same ({detected_format}). No conversion needed."
+                )
+
+            converted_bytes, _, _ = convert_data(
+                file_bytes=file_bytes,
+                source_format=detected_format,
+                target_format=target_format,
+            )
+            output_filename = get_data_output_filename(file.filename, target_format)
+
+        elif content_type == "document":
+            # For now, only support PDF->DOCX and DOCX->PDF
+            if detected_format == "pdf" and target_format.lower() == "docx":
+                from app.services.document_converter import convert_pdf_to_docx
+                converted_bytes = convert_pdf_to_docx(file_bytes)
+                output_filename = get_output_filename(file.filename, "docx")
+            elif detected_format == "docx" and target_format.lower() == "pdf":
+                from app.services.document_converter import convert_docx_to_pdf
+                converted_bytes = convert_docx_to_pdf(file_bytes)
+                output_filename = get_output_filename(file.filename, "pdf")
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported conversion: {detected_format.upper()} to {target_format.upper()}. Supported: PDF→DOCX, DOCX→PDF"
+                )
+
+        if not converted_bytes:
+            raise HTTPException(status_code=500, detail="Conversion failed")
+
+        # Sanitize filename for HTTP headers
+        output_filename = sanitize_filename(output_filename)
+
+        # Save to history
+        save_to_history(converted_bytes, output_filename)
+
+        # Determine content type for response
+        if content_type == "image":
+            media_type = get_content_type(target_format)
+        elif content_type == "data":
+            media_type = get_data_content_type(target_format)
+        else:
+            media_type = "application/octet-stream"
+
+        # Return the converted file
+        return Response(
+            content=converted_bytes,
+            media_type=media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{output_filename}"'
+            }
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Remote fetch failed: {str(e)}"
+        )
+

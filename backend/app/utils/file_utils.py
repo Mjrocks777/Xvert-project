@@ -243,13 +243,51 @@ def save_to_history(file_bytes: bytes, filename: str) -> Optional[str]:
         print(f"Failed to save history: {e}")
         return None
 
+def normalize_cloud_url(url: str) -> str:
+    """Convert cloud share URL variants into direct-download URLs."""
+    if not url:
+        return url
+
+    url = url.strip()
+
+    # Google Drive link variants
+    if 'drive.google.com' in url:
+        if '/file/d/' in url:
+            # https://drive.google.com/file/d/FILEID/view?usp=sharing -> direct
+            file_id = url.split('/file/d/')[1].split('/')[0]
+            return f'https://drive.google.com/uc?export=download&id={file_id}'
+        if 'open?id=' in url:
+            file_id = url.split('open?id=')[-1].split('&')[0]
+            return f'https://drive.google.com/uc?export=download&id={file_id}'
+        if 'uc?export=download&id=' in url:
+            # Already direct
+            return url
+
+    # Dropbox link variants
+    if 'dropbox.com' in url:
+        # If not already ?dl=1, convert
+        if '?dl=1' in url or '&dl=1' in url:
+            return url
+        if '?dl=0' in url:
+            return url.replace('?dl=0', '?dl=1')
+        if '&dl=0' in url:
+            return url.replace('&dl=0', '&dl=1')
+        # Standard share URL with no query
+        if '?' in url:
+            return f"{url}&dl=1"
+        return f"{url}?dl=1"
+
+    return url
+
+
 def fetch_cloud_file(url: str, filename: str) -> UploadFile:
     """Download a file from a URL and return a FastAPI UploadFile object."""
     try:
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=30) as response:
+        clean_url = normalize_cloud_url(url)
+        req = urllib.request.Request(clean_url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=45) as response:
             file_bytes = response.read()
-            
+
         file_obj = io.BytesIO(file_bytes)
         return UploadFile(filename=filename, file=file_obj)
     except Exception as e:

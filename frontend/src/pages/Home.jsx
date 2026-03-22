@@ -10,8 +10,7 @@ import Navbar from '../components/Navbar'
 import AntiGravityBackground from '../components/AntiGravityBackground'
 import DropboxPicker from '../components/DropboxPicker'
 import GoogleDrivePicker from '../components/GoogleDrivePicker'
-import OneDrivePicker from '../components/OneDrivePicker'
-import GoogleDriveSaver from '../components/GoogleDriveSaver'
+import RemoteFetch from '../components/RemoteFetch'
 import { useToast } from '../components/ToastContext'
 import { Search, X, FileImage, FileText, Database, Layers, Command, Upload, Sparkles, ArrowRight } from 'lucide-react'
 
@@ -409,6 +408,22 @@ export default function Home() {
                 setTimeout(() => setMascotState('idle'), 2000)
             }
             setFiles([])
+        }
+    }
+
+    const handleRemoteFileFetched = (fetchedFile) => {
+        setDownloadUrl(null)
+        if (selectedTool?.id === 'merge-pdf') {
+            // For merge-pdf, add to files array
+            setFiles(prev => [...prev, fetchedFile])
+            setFile(null)
+        } else {
+            // For single file tools, set as the main file
+            setFile(fetchedFile)
+            setFiles([])
+            setMessage('')
+            setMascotState('fileUploaded')
+            setTimeout(() => setMascotState('idle'), 2000)
         }
     }
 
@@ -1155,9 +1170,27 @@ export default function Home() {
                                                             style={{ background: 'none', border: 'none', color: 'var(--ag-error)', cursor: 'pointer', fontWeight: 'bold', padding: '0 0.5rem', fontSize: '1rem' }}>✕</button>
                                                     </div>
                                                 ))}
-                                                <div style={{ textAlign: 'center', marginTop: '0.75rem', fontSize: '0.75rem', color: 'var(--ag-text-secondary)' }}>
-                                                    Click box to add more files
+                                                <div style={{ textAlign: 'center', marginTop: '1rem', fontSize: '0.75rem', color: 'var(--ag-text-secondary)' }}>
+                                                    Click box or use cloud pickers below to add more files
                                                 </div>
+                                                
+                                                {/* Cloud Storage Icons - For adding more PDFs */}
+                                                {!downloadUrl && (
+                                                    <div style={{ display: 'flex', gap: '1.2rem', alignItems: 'center', justifyContent: 'center', position: 'relative', zIndex: 10, marginTop: '1rem', pointerEvents: 'auto' }} onClick={(e) => e.stopPropagation()}>
+                                                        <div style={{ width: '40px', height: '1px', background: 'linear-gradient(90deg, transparent, var(--ag-glass-border))', opacity: 0.4 }} />
+                                                        <DropboxPicker
+                                                            onFileSelected={handleDropboxSelect}
+                                                            acceptTypes={getAcceptTypes(selectedTool)}
+                                                            multiselect={true}
+                                                        />
+                                                        <GoogleDrivePicker
+                                                            onFileSelected={handleFileChange}
+                                                            acceptTypes={getAcceptTypes(selectedTool)}
+                                                            multiselect={true}
+                                                        />
+                                                        <div style={{ width: '40px', height: '1px', background: 'linear-gradient(90deg, var(--ag-glass-border), transparent)', opacity: 0.4 }} />
+                                                    </div>
+                                                )}
                                             </div>
                                         ) : file ? (
                                             <FilePreview file={file} />
@@ -1187,34 +1220,38 @@ export default function Home() {
                                                 </motion.div>
 
                                                 {/* Cloud Storage Icons - Below Button */}
-                                                <div style={{ display: 'flex', gap: '1.2rem', alignItems: 'center', justifyContent: 'center', position: 'relative', zIndex: 10 }} onClick={(e) => e.stopPropagation()}>
-                                                    {/* Divider Above Icons */}
-                                                    <div style={{ width: '60px', height: '2px', background: 'linear-gradient(90deg, transparent, var(--ag-glass-border))', opacity: 0.4 }} />
-                                                    
-                                                    <DropboxPicker
-                                                        onFileSelected={handleDropboxSelect}
-                                                        acceptTypes={getAcceptTypes(selectedTool)}
-                                                        multiselect={selectedTool.id === 'merge-pdf'}
-                                                    />
-                                                    <GoogleDrivePicker
-                                                        onFileSelected={handleFileChange}
-                                                        acceptTypes={getAcceptTypes(selectedTool)}
-                                                        multiselect={selectedTool.id === 'merge-pdf'}
-                                                    />
-                                                    <OneDrivePicker
-                                                        onFileSelected={handleDropboxSelect}
-                                                        acceptTypes={getAcceptTypes(selectedTool)}
-                                                        multiselect={selectedTool.id === 'merge-pdf'}
-                                                    />
-                                                    
-                                                    <div style={{ width: '60px', height: '2px', background: 'linear-gradient(90deg, var(--ag-glass-border), transparent)', opacity: 0.4 }} />
-                                                </div>
+                                                {!downloadUrl && (
+                                                    <div style={{ display: 'flex', gap: '1.2rem', alignItems: 'center', justifyContent: 'center', position: 'relative', zIndex: 10 }} onClick={(e) => e.stopPropagation()}>
+                                                        {/* Divider Above Icons */}
+                                                        <div style={{ width: '60px', height: '2px', background: 'linear-gradient(90deg, transparent, var(--ag-glass-border))', opacity: 0.4 }} />
+                                                        
+                                                        <DropboxPicker
+                                                            onFileSelected={handleDropboxSelect}
+                                                            acceptTypes={getAcceptTypes(selectedTool)}
+                                                            multiselect={selectedTool.id === 'merge-pdf'}
+                                                        />
+                                                        <GoogleDrivePicker
+                                                            onFileSelected={handleFileChange}
+                                                            acceptTypes={getAcceptTypes(selectedTool)}
+                                                            multiselect={selectedTool.id === 'merge-pdf'}
+                                                        />
+                                                        <div style={{ width: '60px', height: '2px', background: 'linear-gradient(90deg, var(--ag-glass-border), transparent)', opacity: 0.4 }} />
+                                                    </div>
+                                                )}
 
                                                 <p style={{ color: 'var(--ag-text-secondary)', fontSize: '0.85rem', margin: 0 }}>or drag & drop file here</p>
                                             </div>
                                         )}
                                     </motion.div>
                                 )}
+
+                                    {/* Remote Fetch Component (moved outside dropzone to be interactive) */}
+                                    {!downloadUrl && (
+                                        <RemoteFetch
+                                            onFileFetched={handleRemoteFileFetched}
+                                            isConverting={loading}
+                                        />
+                                    )}
 
                                 {/* Action Buttons */}
                                 {downloadUrl ? (
@@ -1236,12 +1273,8 @@ export default function Home() {
                                             animate={{ scale: 1, opacity: 1 }}
                                             style={{ display: 'block', minWidth: '180px' }}
                                         >
-                                            ↓ Download Local
+                                            Download 
                                         </motion.button>
-                                        <GoogleDriveSaver 
-                                            downloadUrl={downloadUrl} 
-                                            filename={`converted_${selectedTool.target === 'pdf' ? 'document' : (files.length > 0 ? 'merged' : file.name?.split('.')[0])}.${selectedTool.target}`} 
-                                        />
                                     </div>
                                 ) : (
                                     <motion.button

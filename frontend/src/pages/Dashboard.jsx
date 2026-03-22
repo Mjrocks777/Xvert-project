@@ -8,7 +8,6 @@ import ToolIcon from '../components/ToolIcon'
 import Navbar from '../components/Navbar'
 import DropboxPicker from '../components/DropboxPicker'
 import GoogleDrivePicker from '../components/GoogleDrivePicker'
-import OneDrivePicker from '../components/OneDrivePicker'
 
 export default function Dashboard() {
     const navigate = useNavigate()
@@ -453,28 +452,24 @@ export default function Dashboard() {
                                         </div>
 
                                         {/* Cloud Storage Icons - Below Button */}
-                                        <div style={{ display: 'flex', gap: '1.2rem', alignItems: 'center', justifyContent: 'center' }}>
-                                            {/* Divider Above Icons */}
-                                            <div style={{ width: '60px', height: '2px', background: 'linear-gradient(90deg, transparent, #ddd)', opacity: 0.5 }} />
-                                            
-                                            <DropboxPicker
-                                                onFileSelected={handleDropboxSelect}
-                                                acceptTypes={getAcceptTypes(selectedTool)}
-                                                multiselect={selectedTool.id === 'merge-pdf'}
-                                            />
-                                            <GoogleDrivePicker
-                                                onFileSelected={handleDropboxSelect}
-                                                acceptTypes={getAcceptTypes(selectedTool)}
-                                                multiselect={selectedTool.id === 'merge-pdf'}
-                                            />
-                                            <OneDrivePicker
-                                                onFileSelected={handleDropboxSelect}
-                                                acceptTypes={getAcceptTypes(selectedTool)}
-                                                multiselect={selectedTool.id === 'merge-pdf'}
-                                            />
-                                            
-                                            <div style={{ width: '60px', height: '2px', background: 'linear-gradient(90deg, #ddd, transparent)', opacity: 0.5 }} />
-                                        </div>
+                                        {!downloadUrl && (
+                                            <div style={{ display: 'flex', gap: '1.2rem', alignItems: 'center', justifyContent: 'center' }}>
+                                                {/* Divider Above Icons */}
+                                                <div style={{ width: '60px', height: '2px', background: 'linear-gradient(90deg, transparent, #ddd)', opacity: 0.5 }} />
+                                                
+                                                <DropboxPicker
+                                                    onFileSelected={handleDropboxSelect}
+                                                    acceptTypes={getAcceptTypes(selectedTool)}
+                                                    multiselect={selectedTool.id === 'merge-pdf'}
+                                                />
+                                                <GoogleDrivePicker
+                                                    onFileSelected={handleDropboxSelect}
+                                                    acceptTypes={getAcceptTypes(selectedTool)}
+                                                    multiselect={selectedTool.id === 'merge-pdf'}
+                                                />
+                                                <div style={{ width: '60px', height: '2px', background: 'linear-gradient(90deg, #ddd, transparent)', opacity: 0.5 }} />
+                                            </div>
+                                        )}
 
                                         <p style={{ color: '#666', fontSize: '0.9rem', margin: 0 }}>or drag and drop here</p>
                                     </div>
@@ -511,32 +506,6 @@ export default function Dashboard() {
                                         onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
                                     >
                                         Download Local
-                                    </button>
-                                    <button
-                                        onClick={() => {
-                                            if (window.Dropbox) {
-                                                const filename = `converted_${selectedTool.target === 'pdf' ? 'document' : (files.length > 0 ? 'merged' : file.name.split('.')[0])}.${selectedTool.target}`;
-                                                window.Dropbox.save(downloadUrl, filename);
-                                            } else {
-                                                alert("Dropbox Saver is not loaded.");
-                                            }
-                                        }}
-                                        style={{
-                                            backgroundColor: '#0061FE',
-                                            color: 'white',
-                                            padding: '1rem 2rem',
-                                            borderRadius: '50px',
-                                            border: 'none',
-                                            fontSize: '1.1rem',
-                                            fontWeight: 'bold',
-                                            cursor: 'pointer',
-                                            boxShadow: '0 4px 15px rgba(0, 97, 254, 0.3)',
-                                            transition: 'all 0.2s',
-                                        }}
-                                        onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-                                        onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                                    >
-                                        Save to Dropbox
                                     </button>
                                 </div>
                             ) : (

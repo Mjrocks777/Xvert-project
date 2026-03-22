@@ -166,6 +166,9 @@ const GoogleDrivePicker = ({ onFileSelected, acceptTypes, multiselect = false })
                                 finalMimeType = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
                                 url = `https://www.googleapis.com/drive/v3/files/${doc.id}/export?mimeType=${finalMimeType}`;
                                 if (!finalName.endsWith('.pptx')) finalName += '.pptx';
+                            } else if (doc.mimeType === 'application/pdf') {
+                                url = `https://www.googleapis.com/drive/v3/files/${doc.id}?alt=media`;
+                                if (!finalName.endsWith('.pdf')) finalName += '.pdf';
                             } else {
                                 url = `https://www.googleapis.com/drive/v3/files/${doc.id}?alt=media`;
                             }
