@@ -7,7 +7,7 @@ import { FaCheckCircle, FaRocket, FaShieldAlt, FaMagic } from 'react-icons/fa';
 
 const About = () => {
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', backgroundColor: '#F7F5F0' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, backgroundColor: '#F7F5F0' }}>
             <Navbar />
 
             {/* Hero Section */}

@@ -101,7 +101,7 @@ export default function History() {
     if (loading) {
         return (
             <AntiGravityBackground>
-                <div style={{ minHeight: '100vh', padding: '2rem', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <div style={{ flex: 1, padding: '2rem', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                     <div style={{ width: '100%', maxWidth: '700px' }}>
                         <SkeletonLoader width="150px" height="1.2rem" style={{ marginBottom: '2rem' }} />
                         <div className="glass-panel" style={{ padding: '2rem' }}>
@@ -120,7 +120,7 @@ export default function History() {
     if (!session) {
         return (
             <AntiGravityBackground>
-                <div style={{ minHeight: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '2rem' }}>
+                <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '2rem' }}>
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -151,7 +151,7 @@ export default function History() {
     return (
         <AntiGravityBackground>
             <div style={{
-                minHeight: '100vh',
+                flex: 1,
                 padding: '2rem',
                 display: 'flex',
                 flexDirection: 'column',

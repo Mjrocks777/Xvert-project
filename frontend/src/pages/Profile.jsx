@@ -56,7 +56,7 @@ export default function Profile() {
         return (
             <AntiGravityBackground>
                 <div style={{
-                    minHeight: '100vh',
+                    flex: 1,
                     display: 'flex',
                     justifyContent: 'center',
                     alignItems: 'center',
@@ -84,7 +84,7 @@ export default function Profile() {
         return (
             <AntiGravityBackground>
                 <div style={{
-                    minHeight: '100vh',
+                    flex: 1,
                     display: 'flex',
                     justifyContent: 'center',
                     alignItems: 'center',
@@ -150,7 +150,7 @@ export default function Profile() {
     return (
         <AntiGravityBackground>
             <div style={{
-                minHeight: '100vh',
+                flex: 1,
                 padding: '2rem',
                 display: 'flex',
                 flexDirection: 'column',

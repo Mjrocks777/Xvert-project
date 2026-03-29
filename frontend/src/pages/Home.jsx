@@ -247,6 +247,7 @@ export default function Home() {
     const { fileStates, batchStatus, startBatch, reset: resetBatch } = useBatchUpload()
     const [pendingFiles, setPendingFiles] = useState([])
     const [resultBlob, setResultBlob] = useState(null)
+    const resultUrl = useMemo(() => resultBlob ? URL.createObjectURL(resultBlob) : null, [resultBlob])
     const [extractedText, setExtractedText] = useState(null)
     const [ocrDone, setOcrDone] = useState(false)
     const [isOcrConverting, setIsOcrConverting] = useState(false)
@@ -511,7 +512,7 @@ export default function Home() {
                     setProgress(0)
                     setMascotState('idle')
                 }, 3000)
-            }, 800)
+            }
 
         } catch (error) {
             console.error(error)
@@ -1167,7 +1168,7 @@ export default function Home() {
                                                 </div>
                                                 
                                                 {/* Cloud Storage Icons - For adding more PDFs */}
-                                                {!downloadUrl && (
+                                                {!resultUrl && (
                                                     <div style={{ display: 'flex', gap: '1.2rem', alignItems: 'center', justifyContent: 'center', position: 'relative', zIndex: 10, marginTop: '1rem', pointerEvents: 'auto' }} onClick={(e) => e.stopPropagation()}>
                                                         <div style={{ width: '40px', height: '1px', background: 'linear-gradient(90deg, transparent, var(--ag-glass-border))', opacity: 0.4 }} />
                                                         <DropboxPicker
@@ -1212,7 +1213,7 @@ export default function Home() {
                                                 </motion.div>
 
                                                 {/* Cloud Storage Icons - Below Button */}
-                                                {!downloadUrl && (
+                                                {!resultUrl && (
                                                     <div style={{ display: 'flex', gap: '1.2rem', alignItems: 'center', justifyContent: 'center', position: 'relative', zIndex: 10 }} onClick={(e) => e.stopPropagation()}>
                                                         {/* Divider Above Icons */}
                                                         <div style={{ width: '60px', height: '2px', background: 'linear-gradient(90deg, transparent, var(--ag-glass-border))', opacity: 0.4 }} />
@@ -1238,7 +1239,7 @@ export default function Home() {
                                 )}
 
                                     {/* Remote Fetch Component (moved outside dropzone to be interactive) */}
-                                    {!downloadUrl && (
+                                    {!resultUrl && (
                                         <RemoteFetch
                                             targetFormat={selectedTool?.target || tools.find(t => t.id === selectedTool?.id)?.target}
                                             allowedSourceFormats={(() => {
@@ -1254,18 +1255,18 @@ export default function Home() {
                                                 return null;
                                             })()}
                                             onUrlSelected={handleRemoteUrlSelected}
-                                            isConverting={loading}
+                                            isConverting={isConverting}
                                         />
                                     )}
 
                                 {/* Action Buttons */}
 
-                                {downloadUrl ? (
+                                {resultUrl ? (
                                     <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
                                         <motion.button
                                             onClick={() => {
                                                 const link = document.createElement('a')
-                                                link.href = downloadUrl
+                                                link.href = resultUrl
                                                 link.setAttribute('download', `converted_${selectedTool.target === 'pdf' ? 'document' : (files.length > 0 ? 'merged' : file.name?.split('.')[0])}.${selectedTool.target}`)
                                                 document.body.appendChild(link)
                                                 link.click()

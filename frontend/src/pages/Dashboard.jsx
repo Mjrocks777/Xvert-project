@@ -9,6 +9,7 @@ import Navbar from '../components/Navbar'
 import DropboxPicker from '../components/DropboxPicker'
 import GoogleDrivePicker from '../components/GoogleDrivePicker'
 import RemoteFetch from '../components/RemoteFetch'
+import conversionService from '../services/ConversionService'
 
 const tools = [
     // Document Tools
@@ -43,7 +44,28 @@ const tools = [
 ]
 
 export default function Dashboard() {
+    const navigate = useNavigate()
+    const [selectedTool, setSelectedTool] = useState(null)
+    const [file, setFile] = useState(null)
+    const [files, setFiles] = useState([])
+    const [message, setMessage] = useState('')
+    const [loading, setLoading] = useState(false)
+    const [progress, setProgress] = useState(0)
+    const [downloadUrl, setDownloadUrl] = useState(null)
+    const [showRemoteFetch, setShowRemoteFetch] = useState(false)
+    const [session, setSession] = useState(null)
 
+    useEffect(() => {
+        authService.getSession().then(({ data: { session } }) => {
+            setSession(session)
+        })
+
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            setSession(session)
+        })
+
+        return () => subscription.unsubscribe()
+    }, [])
 
     const getAcceptTypes = (tool) => {
         if (!tool) return '*'
@@ -233,7 +255,7 @@ export default function Dashboard() {
 
     return (
         <div style={{
-            minHeight: '100vh',
+            flex: 1,
             backgroundColor: '#F7F5F0', // Beige background
             fontFamily: '"Nunito", sans-serif',
             color: '#333'

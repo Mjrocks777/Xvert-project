@@ -94,7 +94,7 @@ export default function Signup() {
     return (
         <AntiGravityBackground>
             <div style={{
-                minHeight: '100vh',
+                flex: 1,
                 display: 'flex',
                 justifyContent: 'center',
                 alignItems: 'center',
