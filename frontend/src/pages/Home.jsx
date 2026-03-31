@@ -111,40 +111,145 @@ function OrbitalProgress({ progress }) {
     const offset = circumference - (progress / 100) * circumference
 
     return (
-        <div style={{ position: 'relative', width: '120px', height: '120px', margin: '0 auto 1rem' }}>
-            <svg width="120" height="120" viewBox="0 0 100 100" style={{ transform: 'rotate(-90deg)' }}>
-                <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--ag-glass-border)" strokeWidth="4" opacity="0.3" />
+        <div style={{
+            position: 'relative',
+            width: '140px',
+            height: '140px',
+            margin: '0 auto 1.5rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+        }}>
+            <svg width="140" height="140" viewBox="0 0 100 100" style={{ transform: 'rotate(-90deg)' }}>
+                <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--ag-glass-border)" strokeWidth="6" opacity="0.2" />
                 <motion.circle
                     cx={cx} cy={cy} r={r} fill="none"
                     stroke="var(--ag-accent)"
-                    strokeWidth="4"
+                    strokeWidth="6"
                     strokeLinecap="round"
                     strokeDasharray={circumference}
                     initial={{ strokeDashoffset: circumference }}
                     animate={{ strokeDashoffset: offset }}
-                    transition={{ duration: 0.4, ease: 'easeInOut' }}
-                    style={{ filter: 'drop-shadow(0 0 6px var(--ag-accent-glow))' }}
+                    transition={{ duration: 0.6, ease: 'easeInOut' }}
+                    style={{ filter: 'drop-shadow(0 0 8px var(--ag-accent-glow))' }}
                 />
                 {/* Orbiting dot */}
-                {progress < 100 && (
+                {progress > 0 && progress < 100 && (
                     <motion.circle
-                        cx={cx + r} cy={cy} r="4"
+                        cx={cx + r} cy={cy} r="5"
                         fill="var(--ag-accent)"
-                        style={{ filter: 'drop-shadow(0 0 8px var(--ag-accent))' }}
+                        style={{ filter: 'drop-shadow(0 0 10px var(--ag-accent))', zIndex: 5 }}
                         animate={{ rotate: 360 }}
-                        transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+                        transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
                         transformOrigin={`${cx}px ${cy}px`}
                     />
                 )}
             </svg>
             <div style={{
-                position: 'absolute', top: '50%', left: '50%',
-                transform: 'translate(-50%, -50%)',
-                fontWeight: 700, fontSize: '1.3rem', color: 'var(--ag-text)',
+                position: 'absolute',
+                fontWeight: 800,
+                fontSize: '1.8rem',
+                color: 'var(--ag-text)',
                 fontFamily: '"Outfit", sans-serif',
+                textAlign: 'center',
+                letterSpacing: '-1px',
             }}>
                 {progress}%
             </div>
+        </div>
+    )
+}
+
+// ---- Conversion Success Header (Overlapping Icons + Text) ----
+function ConversionHeader({ tool }) {
+    if (!tool) return null;
+    return (
+        <div style={{ textAlign: 'center', marginBottom: '3.5rem' }}>
+            {/* Overlapping Icons section */}
+            <div style={{
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                marginBottom: '2.5rem',
+                position: 'relative',
+                height: '110px',
+            }}>
+                <div style={{ position: 'relative', width: '160px', height: '100px' }}>
+                    {/* Background Icon (Source) */}
+                    <div style={{
+                        position: 'absolute',
+                        left: '0',
+                        top: '0',
+                        zIndex: 1,
+                        opacity: 0.85,
+                    }}>
+                        <ToolIcon
+                            tool={{ ...tool, id: 'src' }}
+                            simple={true}
+                            iconSize={72}
+                        />
+                    </div>
+
+                    {/* Foreground Icon (Target) */}
+                    <div style={{
+                        position: 'absolute',
+                        right: '0',
+                        bottom: '0',
+                        zIndex: 3,
+                        backgroundColor: '#fff',
+                        borderRadius: '12px',
+                        padding: '4px',
+                        boxShadow: '0 8px 25px rgba(0,0,0,0.15)',
+                        border: '1px solid var(--ag-glass-border)',
+                    }}>
+                        <ToolIcon
+                            tool={{ ...tool, id: 'tgt', type: tool.target }}
+                            simple={true}
+                            iconSize={68}
+                        />
+                    </div>
+
+                    {/* Arrow Circle - Subtle and clean */}
+                    <div style={{
+                        position: 'absolute',
+                        top: '40%',
+                        left: '50%',
+                        transform: 'translate(-50%, -50%)',
+                        backgroundColor: '#fff',
+                        borderRadius: '50%',
+                        width: '36px',
+                        height: '36px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 6px 15px rgba(0,0,0,0.12)',
+                        zIndex: 4,
+                        border: '1.5px solid var(--ag-glass-border)',
+                    }}>
+                        <ArrowRight size={20} color="var(--ag-accent)" />
+                    </div>
+                </div>
+            </div>
+
+            {/* Title & Description section */}
+            <h2 style={{
+                fontFamily: '"Outfit", sans-serif',
+                fontSize: '2.8rem',
+                fontWeight: 800,
+                color: 'var(--ag-text)',
+                marginBottom: '1rem',
+                letterSpacing: '-1.2px',
+                lineHeight: 1,
+            }}>{tool.name}</h2>
+            <p style={{
+                color: 'var(--ag-text-secondary)',
+                fontSize: '1.15rem',
+                fontWeight: 500,
+                maxWidth: '550px',
+                margin: '0 auto',
+                lineHeight: 1.6,
+                opacity: 0.8,
+            }}>{tool.desc}</p>
         </div>
     )
 }
@@ -1143,24 +1248,26 @@ export default function Home() {
 
                                 {/* Orbital Progress + Mascot Centerpiece */}
                                 {(isConverting || isDone) && (
-                                    <div style={{ position: 'relative', minHeight: '280px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                                        {/* Tool Icon - Centered inside ring during conversion */}
+                                    <div style={{ position: 'relative', minHeight: '350px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '1rem 0' }}>
+                                        
+                                        {/* New Success Header (Icons + Text) */}
                                         <motion.div
-                                            initial={{ opacity: 0, scale: 0.5 }}
-                                            animate={{ opacity: 1, scale: 1.8 }}
-                                            transition={springBounce}
-                                            style={{
-                                                zIndex: 1,
-                                                marginBottom: '1rem',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                            }}
+                                            initial={{ opacity: 0, y: 20 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            transition={springGentle}
                                         >
-                                            <ToolIcon tool={selectedTool} />
+                                            <ConversionHeader tool={selectedTool} />
                                         </motion.div>
 
-                                        <OrbitalProgress progress={overallProgress} />
+                                        {/* Re-styled centered progress circle */}
+                                        <motion.div
+                                            initial={{ opacity: 0, scale: 0.9 }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            transition={{ delay: 0.2, ...springBounce }}
+                                            style={{ margin: '0.5rem 0' }}
+                                        >
+                                            <OrbitalProgress progress={overallProgress} />
+                                        </motion.div>
 
                                         <div style={{ width: '100%', maxWidth: '600px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(190px,1fr))', gap: '0.75rem', marginTop: '2rem', textAlign: 'left' }}>
                                             {Object.entries(fileStates).map(([id, state]) => (
