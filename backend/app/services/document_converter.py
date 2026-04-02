@@ -1,18 +1,83 @@
 
 import os
+import sys
+import shutil
+import subprocess
 import tempfile
-from fastapi import UploadFile
 import asyncio
-from functools import partial
+from fastapi import UploadFile
 from pdf2docx import Converter
-try:
-    from docx2pdf import convert as docx2pdf_convert
-except ImportError:
-    docx2pdf_convert = None
 from pypdf import PdfWriter
 import fitz  # PyMuPDF
 from PIL import Image
-import pythoncom
+
+# ---------------------------------------------------------------------------
+# LibreOffice headless helper — cross-platform DOCX → PDF
+# ---------------------------------------------------------------------------
+def _libreoffice_convert_to_pdf(input_path: str, output_dir: str) -> str:
+    """
+    Convert a DOCX (or any LibreOffice-supported format) to PDF using the
+    LibreOffice headless CLI. Works on Linux (Docker/Render) and macOS.
+    Falls back to a helpful error on Windows if LibreOffice is not installed.
+
+    Args:
+        input_path:  Absolute path to the source DOCX file.
+        output_dir:  Directory where LibreOffice will write the output PDF.
+
+    Returns:
+        Absolute path to the generated PDF file.
+
+    Raises:
+        RuntimeError if LibreOffice is not found or conversion fails.
+    """
+    # Locate the LibreOffice executable
+    lo_cmd = shutil.which("libreoffice") or shutil.which("soffice")
+    if lo_cmd is None:
+        if sys.platform == "win32":
+            # Common Windows install locations
+            candidates = [
+                r"C:\Program Files\LibreOffice\program\soffice.exe",
+                r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
+            ]
+            for c in candidates:
+                if os.path.isfile(c):
+                    lo_cmd = c
+                    break
+        if lo_cmd is None:
+            raise RuntimeError(
+                "LibreOffice is not installed or not found in PATH.\n"
+                "  Linux/Docker: confirmed installed via apt-get in Dockerfile.\n"
+                "  Windows (local dev): install from https://www.libreoffice.org/download/"
+            )
+
+    result = subprocess.run(
+        [
+            lo_cmd,
+            "--headless",
+            "--norestore",
+            "--convert-to", "pdf",
+            "--outdir", output_dir,
+            input_path,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,  # 2-minute safety timeout
+    )
+
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"LibreOffice conversion failed (exit {result.returncode}).\n"
+            f"stderr: {result.stderr.strip()}"
+        )
+
+    # LibreOffice writes <basename>.pdf into output_dir
+    base = os.path.splitext(os.path.basename(input_path))[0]
+    pdf_path = os.path.join(output_dir, f"{base}.pdf")
+    if not os.path.isfile(pdf_path):
+        raise RuntimeError(
+            f"LibreOffice reported success but output PDF not found at: {pdf_path}"
+        )
+    return pdf_path
 
 # All temp/output files go into the system temp directory
 _TEMP_DIR = tempfile.gettempdir()
@@ -35,24 +100,14 @@ async def convert_document(file: UploadFile, source_format: str, target_format: 
                 cv.convert(output_filename, start=0, end=None)
                 cv.close()
 
-            # --- LOGIC: Word to PDF ---
+            # --- LOGIC: Word to PDF (via LibreOffice headless) ---
             elif source_format in ["docx", "doc"] and target_format == "pdf":
-                if docx2pdf_convert:
-                    abs_temp = os.path.abspath(temp_filename)
-                    abs_output = os.path.abspath(output_filename)
-                    try:
-                        pythoncom.CoInitialize()
-                        docx2pdf_convert(abs_temp, abs_output)
-                    except Exception as cx:
-                        print(f"DEBUG: docx2pdf failed: {cx}")
-                        raise cx
-                    finally:
-                        try:
-                            pythoncom.CoUninitialize()
-                        except:
-                            pass
-                else:
-                    raise ImportError("docx2pdf module not installed or available.")
+                abs_temp = os.path.abspath(temp_filename)
+                out_dir   = os.path.dirname(os.path.abspath(output_filename))
+                pdf_path  = _libreoffice_convert_to_pdf(abs_temp, out_dir)
+                # LibreOffice names the file <basename>.pdf; rename to match expected output_filename
+                if os.path.abspath(pdf_path) != os.path.abspath(output_filename):
+                    os.replace(pdf_path, output_filename)
 
             # --- LOGIC: Image to PDF ---
             elif source_format in ["jpg", "jpeg", "png", "image"] and target_format == "pdf":

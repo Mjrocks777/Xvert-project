@@ -1,0 +1,31 @@
+# ── Secrets — NEVER bake into the image ──────────────────────────────────────
+.env
+*.env
+
+# ── Python artifacts ──────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# ── Virtual environment ───────────────────────────────────────────────────────
+venv/
+env/
+.venv/
+
+# ── Local test / dev files ────────────────────────────────────────────────────
+test.py
+test_insert.py
+history/
+
+# ── Node (shouldn't be here but just in case) ─────────────────────────────────
+node_modules/
+package-lock.json
+
+# ── OS / editor noise ─────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

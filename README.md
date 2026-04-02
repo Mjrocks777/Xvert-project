@@ -6,6 +6,10 @@ This project consists of a React frontend and a FastAPI backend.
 
 - [Node.js](https://nodejs.org/) (for frontend)
 - [Python](https://www.python.org/) (for backend)
+- **Tesseract OCR Engine** (Required for OCR conversion features)
+  - **Windows**: Download and install the [Tesseract installer here](https://github.com/UB-Mannheim/tesseract/wiki). Make sure to add it to your system PATH.
+  - **macOS**: `brew install tesseract`
+  - **Linux (Ubuntu/Debian)**: `sudo apt install tesseract-ocr`
 
 ## Getting Started
 
