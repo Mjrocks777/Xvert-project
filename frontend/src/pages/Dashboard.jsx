@@ -5,54 +5,67 @@ import authService from '../services/AuthService'
 import UserAvatar from '../components/UserAvatar'
 import ToolIcon from '../components/ToolIcon'
 import Navbar from '../components/Navbar'
-import BatchUploader from '../components/BatchUploader'
-import '../styles/index.css'
+
+import DropboxPicker from '../components/DropboxPicker'
+import GoogleDrivePicker from '../components/GoogleDrivePicker'
+import RemoteFetch from '../components/RemoteFetch'
+import conversionService from '../services/ConversionService'
+
+const tools = [
+    // Document Tools
+    { id: 'pdf-to-word', name: 'PDF to Word', desc: 'Convert PDFs to editable DOCX.', icon: '📄', type: 'pdf', target: 'docx' },
+    { id: 'docx-to-pdf', name: 'Word to PDF', desc: 'Convert DOCX files to PDF.', icon: '📝', type: 'docx', target: 'pdf' },
+    { id: 'image-to-pdf', name: 'Image to PDF', desc: 'JPG, PNG, GIF to PDF.', icon: '🖼️', type: 'image', target: 'pdf' },
+    { id: 'merge-pdf', name: 'Merge PDF', desc: 'Combine multiple PDFs into one.', icon: '🔗', type: 'merge', target: 'pdf' },
+    { id: 'pdf-to-jpg', name: 'PDF to JPG', desc: 'Extract PDF pages as JPGs.', icon: 'fz', type: 'pdf', target: 'jpg' },
+    { id: 'pdf-to-png', name: 'PDF to PNG', desc: 'Extract PDF pages as PNGs.', icon: 'fz', type: 'pdf', target: 'png' },
+
+    // Image Tools
+    { id: 'jpg-to-png', name: 'JPG to PNG', desc: 'Convert JPG to transparent PNG.', icon: '📷', type: 'jpg', target: 'png' },
+    { id: 'png-to-jpg', name: 'PNG to JPG', desc: 'Convert PNG to standard JPG.', icon: '📸', type: 'png', target: 'jpg' },
+    { id: 'jpg-to-gif', name: 'JPG to GIF', desc: 'Animated GIF from JPGs.', icon: '👾', type: 'jpg', target: 'gif' },
+    { id: 'png-to-gif', name: 'PNG to GIF', desc: 'Animated GIF from PNGs.', icon: '👾', type: 'png', target: 'gif' },
+    { id: 'gif-to-jpg', name: 'GIF to JPG', desc: 'Static JPG from GIF.', icon: '📸', type: 'gif', target: 'jpg' },
+    { id: 'gif-to-png', name: 'GIF to PNG', desc: 'Static PNG from GIF.', icon: '📷', type: 'gif', target: 'png' },
+
+    // Data Tools
+    { id: 'json-to-csv', name: 'JSON to CSV', desc: 'Convert JSON data to CSV.', icon: '📊', type: 'data', target: 'csv' },
+    { id: 'csv-to-json', name: 'CSV to JSON', desc: 'Convert CSV rows to JSON.', icon: '📋', type: 'data', target: 'json' },
+    { id: 'excel-to-csv', name: 'Excel to CSV', desc: 'Convert XLSX sheets to CSV.', icon: 'x', type: 'data', target: 'csv' },
+    { id: 'csv-to-excel', name: 'CSV to Excel', desc: 'Convert CSV to Excel XLSX.', icon: 'x', type: 'data', target: 'xlsx' },
+    { id: 'excel-to-json', name: 'Excel to JSON', desc: 'Convert Excel to JSON data.', icon: 'x', type: 'data', target: 'json' },
+    { id: 'json-to-excel', name: 'JSON to Excel', desc: 'Convert JSON to Excel XLSX.', icon: 'x', type: 'data', target: 'xlsx' },
+    { id: 'xml-to-json', name: 'XML to JSON', desc: 'Convert XML to JSON format.', icon: '📋', type: 'data', target: 'json' },
+    { id: 'json-to-xml', name: 'JSON to XML', desc: 'Convert JSON to XML format.', icon: '🧩', type: 'data', target: 'xml' },
+    { id: 'xml-to-csv', name: 'XML to CSV', desc: 'Convert XML to CSV format.', icon: '📊', type: 'data', target: 'csv' },
+    { id: 'csv-to-xml', name: 'CSV to XML', desc: 'Convert CSV to XML format.', icon: '🧩', type: 'data', target: 'xml' },
+    { id: 'xml-to-excel', name: 'XML to Excel', desc: 'Convert XML to Excel XLSX.', icon: 'x', type: 'data', target: 'xlsx' },
+    { id: 'excel-to-xml', name: 'Excel to XML', desc: 'Convert Excel to XML format.', icon: '🧩', type: 'data', target: 'xml' },
+]
 
 export default function Dashboard() {
     const navigate = useNavigate()
     const [selectedTool, setSelectedTool] = useState(null)
+    const [file, setFile] = useState(null)
+    const [files, setFiles] = useState([])
+    const [message, setMessage] = useState('')
+    const [loading, setLoading] = useState(false)
+    const [progress, setProgress] = useState(0)
+    const [downloadUrl, setDownloadUrl] = useState(null)
+    const [showRemoteFetch, setShowRemoteFetch] = useState(false)
     const [session, setSession] = useState(null)
 
     useEffect(() => {
         authService.getSession().then(({ data: { session } }) => {
             setSession(session)
-            if (!session) {
-                navigate('/login') // Redirect if not logged in, since this IS the dashboard
-            }
         })
-    }, [navigate])
 
-    const tools = [
-        // Document Tools
-        { id: 'pdf-to-word', name: 'PDF to Word', desc: 'Convert PDFs to editable DOCX.', icon: '📄', type: 'pdf', target: 'docx' },
-        { id: 'docx-to-pdf', name: 'Word to PDF', desc: 'Convert DOCX files to PDF.', icon: '📝', type: 'docx', target: 'pdf' },
-        { id: 'image-to-pdf', name: 'Image to PDF', desc: 'JPG, PNG, GIF to PDF.', icon: '🖼️', type: 'image', target: 'pdf' },
-        { id: 'merge-pdf', name: 'Merge PDF', desc: 'Combine multiple PDFs into one.', icon: '🔗', type: 'merge', target: 'pdf' },
-        { id: 'pdf-to-jpg', name: 'PDF to JPG', desc: 'Extract PDF pages as JPGs.', icon: 'fz', type: 'pdf', target: 'jpg' },
-        { id: 'pdf-to-png', name: 'PDF to PNG', desc: 'Extract PDF pages as PNGs.', icon: 'fz', type: 'pdf', target: 'png' },
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            setSession(session)
+        })
 
-        // Image Tools
-        { id: 'jpg-to-png', name: 'JPG to PNG', desc: 'Convert JPG to transparent PNG.', icon: '📷', type: 'jpg', target: 'png' },
-        { id: 'png-to-jpg', name: 'PNG to JPG', desc: 'Convert PNG to standard JPG.', icon: '📸', type: 'png', target: 'jpg' },
-        { id: 'jpg-to-gif', name: 'JPG to GIF', desc: 'Animated GIF from JPGs.', icon: '👾', type: 'jpg', target: 'gif' },
-        { id: 'png-to-gif', name: 'PNG to GIF', desc: 'Animated GIF from PNGs.', icon: '👾', type: 'png', target: 'gif' },
-        { id: 'gif-to-jpg', name: 'GIF to JPG', desc: 'Static JPG from GIF.', icon: '📸', type: 'gif', target: 'jpg' },
-        { id: 'gif-to-png', name: 'GIF to PNG', desc: 'Static PNG from GIF.', icon: '📷', type: 'gif', target: 'png' },
-
-        // Data Tools
-        { id: 'json-to-csv', name: 'JSON to CSV', desc: 'Convert JSON data to CSV.', icon: '📊', type: 'data', target: 'csv' },
-        { id: 'csv-to-json', name: 'CSV to JSON', desc: 'Convert CSV rows to JSON.', icon: '📋', type: 'data', target: 'json' },
-        { id: 'excel-to-csv', name: 'Excel to CSV', desc: 'Convert XLSX sheets to CSV.', icon: 'x', type: 'data', target: 'csv' },
-        { id: 'csv-to-excel', name: 'CSV to Excel', desc: 'Convert CSV to Excel XLSX.', icon: 'x', type: 'data', target: 'xlsx' },
-        { id: 'excel-to-json', name: 'Excel to JSON', desc: 'Convert Excel to JSON data.', icon: 'x', type: 'data', target: 'json' },
-        { id: 'json-to-excel', name: 'JSON to Excel', desc: 'Convert JSON to Excel XLSX.', icon: 'x', type: 'data', target: 'xlsx' },
-        { id: 'xml-to-json', name: 'XML to JSON', desc: 'Convert XML to JSON format.', icon: '📋', type: 'data', target: 'json' },
-        { id: 'json-to-xml', name: 'JSON to XML', desc: 'Convert JSON to XML format.', icon: '🧩', type: 'data', target: 'xml' },
-        { id: 'xml-to-csv', name: 'XML to CSV', desc: 'Convert XML to CSV format.', icon: '📊', type: 'data', target: 'csv' },
-        { id: 'csv-to-xml', name: 'CSV to XML', desc: 'Convert CSV to XML format.', icon: '🧩', type: 'data', target: 'xml' },
-        { id: 'xml-to-excel', name: 'XML to Excel', desc: 'Convert XML to Excel XLSX.', icon: 'x', type: 'data', target: 'xlsx' },
-        { id: 'excel-to-xml', name: 'Excel to XML', desc: 'Convert Excel to XML format.', icon: '🧩', type: 'data', target: 'xml' },
-    ]
+        return () => subscription.unsubscribe()
+    }, [])
 
     const getAcceptTypes = (tool) => {
         if (!tool) return '*'
@@ -72,17 +85,177 @@ export default function Dashboard() {
         navigate('/')
     }
 
+
+    const handleFileChange = (e) => {
+        setDownloadUrl(null)
+        const selectedFile = e.target.files[0];
+
+        const isValidFileType = (file, tool) => {
+            if (!file) return false
+            const ext = '.' + file.name.split('.').pop().toLowerCase()
+            const accept = getAcceptTypes(tool)
+            return accept === '*' || accept.includes(ext)
+        }
+
+        if (selectedTool?.id === 'merge-pdf') {
+            const newFiles = Array.from(e.target.files).filter(f => isValidFileType(f, selectedTool))
+            if (newFiles.length < e.target.files.length) {
+                setMessage('Some files were skipped because they are not PDFs.')
+                setTimeout(() => setMessage(''), 3000)
+            }
+            setFiles(prev => [...prev, ...newFiles])
+            setFile(null)
+        } else {
+            if (isValidFileType(selectedFile, selectedTool)) {
+                setFile(selectedFile)
+                setMessage('')
+            } else {
+                setFile(null)
+                setMessage(`Invalid file type. Please select a ${selectedTool.type === 'image' ? 'Image' : selectedTool.type.toUpperCase()} file.`)
+            }
+            setFiles([])
+        }
+        e.target.value = ''
+    }
+
+    const handleRemoveFile = (index) => {
+        setFiles(prev => prev.filter((_, i) => i !== index))
+    }
+
+    const handleDropboxSelect = (filesInfo) => {
+        setDownloadUrl(null)
+        if (selectedTool?.id === 'merge-pdf') {
+            const urls = filesInfo.map(f => f.url) // dropins.choose returns an array of file objects
+            setFiles(prev => [...prev, ...urls.map((url, i) => ({
+                name: filesInfo[i].name,
+                url: url,
+                isCloudUrl: true
+            }))])
+            setFile(null)
+            setMessage('')
+        } else {
+            const fileInfo = filesInfo[0]
+            if (fileInfo) {
+                setFile({
+                    name: fileInfo.name,
+                    url: fileInfo.url,
+                    isCloudUrl: true
+                })
+                setMessage('')
+            }
+            setFiles([])
+        }
+    }
+
     const handleToolSelect = (tool) => {
         setSelectedTool(tool)
+        setFile(null)
+        setMessage('')
+        setShowRemoteFetch(false)
+
     }
 
     const handleBackToGrid = () => {
         setSelectedTool(null)
+
+        setFile(null)
+        setFiles([])
+        setMessage('')
+        setDownloadUrl(null)
+        setShowRemoteFetch(false)
+    }
+
+    const handleConvert = async () => {
+        if (selectedTool.id === 'merge-pdf') {
+            if (files.length < 2) {
+                setMessage('Please select at least 2 PDF files to merge.')
+                return
+            }
+        } else if (!file) {
+            setMessage('Please select a file first.')
+            return
+        }
+
+        setLoading(true)
+        setProgress(0)
+        setMessage('Converting... (Larger files may take 10-20 seconds)')
+
+        const progressInterval = setInterval(() => {
+            setProgress(prev => {
+                if (prev >= 95) return prev
+                return prev + 5
+            })
+        }, 500)
+
+        const timer = setTimeout(() => {
+            setMessage('Still processing... complex files need a moment. Please do not refresh.');
+        }, 5000);
+
+        try {
+            let resultBlob;
+
+            if (file && file.isRemote) {
+                resultBlob = await conversionService.remoteConvert(file.url, selectedTool.target);
+            } else if (selectedTool.id === 'merge-pdf') {
+                resultBlob = await conversionService.mergeDocuments(files);
+            } else if (selectedTool.id === 'image-to-pdf') {
+                resultBlob = await conversionService.convertDocument(file, 'image', 'pdf');
+            } else if (selectedTool.type === 'pdf') {
+                resultBlob = await conversionService.convertDocument(file, 'pdf', selectedTool.target);
+            } else if (selectedTool.type === 'image' || selectedTool.type === 'jpg' || selectedTool.type === 'png' || selectedTool.type === 'gif') {
+                resultBlob = await conversionService.convertImage(file, selectedTool.target);
+            } else if (selectedTool.type === 'docx') {
+                resultBlob = await conversionService.convertDocument(file, 'docx', 'pdf');
+            } else if (selectedTool.type === 'data') {
+                resultBlob = await conversionService.convertData(file, selectedTool.target);
+            } else {
+                clearInterval(progressInterval);
+                clearTimeout(timer);
+                setMessage('This tool is currently unavailable.');
+                setLoading(false);
+                setProgress(0);
+                return;
+            }
+
+            clearInterval(progressInterval);
+
+            // Fast fill animation to reach 100% smoothly
+            const fastFillInterval = setInterval(() => {
+                setProgress(prev => {
+                    if (prev >= 100) {
+                        clearInterval(fastFillInterval);
+                        setTimeout(() => {
+                            const url = window.URL.createObjectURL(new Blob([resultBlob]));
+                            clearTimeout(timer);
+                            setMessage('Conversion successful!');
+                            setDownloadUrl(url);
+                            setLoading(false);
+                            setTimeout(() => setProgress(0), 1000);
+                        }, 500); // 500ms pause at 100% before switching
+                        return 100;
+                    }
+                    return prev + 10; // Increment faster to catch up
+                });
+            }, 50); // Fast update rate
+
+        } catch (error) {
+            console.error(error);
+            clearInterval(progressInterval);
+            clearTimeout(timer);
+            if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+                setMessage('Conversion timed out. The file might be too large or complex.');
+            } else {
+                setMessage('Conversion failed. Please try again.');
+            }
+            setProgress(0);
+            setLoading(false);
+        }
+
     }
 
     return (
         <div style={{
-            minHeight: '100vh',
+            flex: 1,
             backgroundColor: '#F7F5F0', // Beige background
             fontFamily: '"Nunito", sans-serif',
             color: '#333'
@@ -167,8 +340,296 @@ export default function Dashboard() {
 
             {/* View: Selected Tool — Batch Uploader */}
             {selectedTool && (
-                <main style={{ padding: '2rem 1rem', maxWidth: '1200px', margin: '0 auto' }}>
-                    <BatchUploader tool={selectedTool} accept={getAcceptTypes(selectedTool)} onBack={handleBackToGrid} />
+
+                <main style={{ padding: '3rem 2rem', maxWidth: '1200px', margin: '0 auto' }}>
+                    <div style={{ maxWidth: '800px', margin: '0 auto', textAlign: 'center' }}>
+                        {/* Back Button */}
+                        <div style={{ textAlign: 'left', marginBottom: '2rem' }}>
+                            <span onClick={handleBackToGrid} style={{ cursor: 'pointer', color: '#1D3557', fontWeight: 'bold' }}>
+                                ← Back to Dashboard
+                            </span>
+                        </div>
+
+                        <div style={{
+                            backgroundColor: '#fff',
+                            padding: '3rem',
+                            borderRadius: '20px',
+                            boxShadow: '0 4px 15px rgba(0,0,0,0.05)'
+                        }}>
+                            <div style={{ marginBottom: '2rem' }}>
+                                <ToolIcon tool={selectedTool} />
+                            </div>
+                            <h2 style={{ fontSize: '2.5rem', color: '#1D3557', marginBottom: '0.5rem' }}>{selectedTool.name}</h2>
+                            <p style={{ color: '#666', marginBottom: '3rem', fontSize: '1.2rem' }}>{selectedTool.desc}</p>
+
+                            <div style={{
+                                border: '2px dashed #A8DADC',
+                                borderRadius: '15px',
+                                padding: '2.5rem 2rem',
+                                backgroundColor: '#f9f9f9',
+                                marginBottom: '2rem',
+                                position: 'relative',
+                                transition: 'all 0.3s ease',
+                                maxWidth: '500px',
+                                margin: '0 auto 2rem'
+                            }}
+
+                                onDragOver={(e) => {
+                                    e.preventDefault();
+                                    e.currentTarget.style.backgroundColor = '#E3F2FD';
+                                    e.currentTarget.style.borderColor = '#2196F3';
+                                }}
+                                onDragLeave={(e) => {
+                                    e.preventDefault();
+                                    e.currentTarget.style.backgroundColor = '#FAFAFA';
+                                    e.currentTarget.style.borderColor = '#1D3557';
+                                }}
+                            >
+                                <input
+                                    type="file"
+                                    accept={getAcceptTypes(selectedTool)}
+                                    onChange={handleFileChange}
+                                    multiple={selectedTool.id === 'merge-pdf'}
+                                    style={{
+                                        position: 'absolute',
+                                        top: 0,
+                                        left: 0,
+                                        width: '100%',
+                                        height: '100%',
+                                        opacity: 0,
+                                        cursor: 'pointer'
+                                    }}
+                                />
+                                {selectedTool.id === 'merge-pdf' && files.length > 0 ? (
+                                    <div style={{ maxHeight: '200px', overflowY: 'auto', width: '100%', textAlign: 'left', position: 'relative', zIndex: 10, pointerEvents: 'none' }}>
+                                        <p style={{ fontWeight: 'bold', color: '#1D3557', textAlign: 'center', marginBottom: '1rem' }}>
+                                            {files.length} files selected
+                                        </p>
+                                        {files.map((f, index) => (
+                                            <div key={index} style={{
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                backgroundColor: 'white',
+                                                padding: '0.5rem',
+                                                marginBottom: '0.5rem',
+                                                borderRadius: '4px',
+                                                border: '1px solid #1D3557',
+                                                pointerEvents: 'auto'
+                                            }}>
+                                                <span style={{ fontSize: '0.9rem', maxWidth: '85%' }}>
+                                                    {f.name}
+                                                </span>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation()
+                                                        e.preventDefault()
+                                                        handleRemoveFile(index)
+                                                    }}
+                                                    style={{ border: 'none', background: 'none', color: '#D32F2F', cursor: 'pointer', fontWeight: 'bold' }}
+                                                >
+                                                    ✕
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : file ? (
+                                    <div>
+                                        <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📄</div>
+                                        <p style={{ fontWeight: 'bold', color: '#1D3557', fontSize: '1.2rem' }}>{file.name}</p>
+                                        <p style={{ fontSize: '0.9rem', color: '#666' }}>Click to change file</p>
+                                    </div>
+                                ) : (
+                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem', paddingTop: '0.5rem' }}>
+                                        {/* Select File Button - Large and Prominent */}
+                                        <div style={{
+                                            backgroundColor: '#A8DADC',
+                                            color: '#1D3557',
+                                            padding: '1rem 3rem',
+                                            borderRadius: '60px',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            fontWeight: 'bold',
+                                            cursor: 'pointer',
+                                            fontSize: '1.05rem',
+                                            boxShadow: '0 4px 15px rgba(203, 185, 164, 0.3)',
+                                            transition: 'all 0.2s'
+                                        }}
+                                        onMouseOver={(e) => {
+                                            e.currentTarget.style.transform = 'scale(1.05)';
+                                            e.currentTarget.style.boxShadow = '0 8px 25px rgba(203, 185, 164, 0.4)';
+                                        }}
+                                        onMouseOut={(e) => {
+                                            e.currentTarget.style.transform = 'scale(1)';
+                                            e.currentTarget.style.boxShadow = '0 4px 15px rgba(203, 185, 164, 0.3)';
+                                        }}>
+                                            Select {selectedTool.type === 'image' ? 'Image' : selectedTool.id === 'merge-pdf' ? 'PDFs' : 'File'}
+                                        </div>
+
+                                        {/* Cloud Storage Icons - Below Button */}
+                                        {!downloadUrl && (
+                                            <div style={{ display: 'flex', gap: '1.2rem', alignItems: 'center', justifyContent: 'center' }}>
+                                                {/* Divider Above Icons */}
+                                                <div style={{ width: '60px', height: '2px', background: 'linear-gradient(90deg, transparent, #ddd)', opacity: 0.5 }} />
+                                                
+                                                <DropboxPicker
+                                                    onFileSelected={handleDropboxSelect}
+                                                    acceptTypes={getAcceptTypes(selectedTool)}
+                                                    multiselect={selectedTool.id === 'merge-pdf'}
+                                                />
+                                                <GoogleDrivePicker
+                                                    onFileSelected={handleDropboxSelect}
+                                                    acceptTypes={getAcceptTypes(selectedTool)}
+                                                    multiselect={selectedTool.id === 'merge-pdf'}
+                                                />
+                                                <div style={{ width: '60px', height: '2px', background: 'linear-gradient(90deg, #ddd, transparent)', opacity: 0.5 }} />
+                                            </div>
+                                        )}
+
+                                        <p style={{ color: '#666', fontSize: '0.9rem', margin: 0 }}>or drag and drop here</p>
+
+                                        {/* Remote Fetch Toggle */}
+                                        <div style={{ width: '100%', textAlign: 'center', marginTop: '0.5rem' }}>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); e.preventDefault(); setShowRemoteFetch(prev => !prev); }}
+                                                style={{
+                                                    background: 'none',
+                                                    border: '1px solid #A8DADC',
+                                                    borderRadius: '20px',
+                                                    padding: '0.4rem 1.2rem',
+                                                    color: '#1D3557',
+                                                    cursor: 'pointer',
+                                                    fontSize: '0.85rem',
+                                                    fontWeight: '600',
+                                                    transition: 'all 0.2s',
+                                                }}
+                                                onMouseOver={(e) => { e.currentTarget.style.background = '#E8F5FD'; }}
+                                                onMouseOut={(e) => { e.currentTarget.style.background = 'none'; }}
+                                            >
+                                                🌐 {showRemoteFetch ? 'Hide URL Fetch' : 'Fetch from URL'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Remote Fetch Panel */}
+                            {showRemoteFetch && (() => {
+                                // Derive which source file types are valid for this tool
+                                const getAllowedFormats = (tool) => {
+                                    if (!tool) return null;
+                                    if (tool.id === 'merge-pdf' || tool.type === 'pdf') return ['pdf'];
+                                    if (tool.type === 'docx') return ['docx'];
+                                    if (tool.type === 'image') return ['png', 'jpg', 'jpeg', 'gif'];
+                                    if (tool.type === 'jpg') return ['jpg', 'jpeg'];
+                                    if (tool.type === 'png') return ['png'];
+                                    if (tool.type === 'gif') return ['gif'];
+                                    if (tool.type === 'data') return ['json', 'csv', 'xlsx', 'xml'];
+                                    return null;
+                                };
+                                const currentTarget = selectedTool.target || tools.find(t => t.id === selectedTool.id)?.target;
+                                console.log('Dashboard: Render RemoteFetch for', selectedTool.id, 'target:', currentTarget);
+                                
+                                return (
+                                    <div style={{ marginBottom: '1.5rem' }}>
+                                        <RemoteFetch
+                                            targetFormat={currentTarget}
+                                            allowedSourceFormats={getAllowedFormats(selectedTool)}
+                                            onUrlSelected={(remoteFileInfo) => {
+                                                setFile(remoteFileInfo);
+                                                setFiles([]);
+                                                setShowRemoteFetch(false);
+                                                setMessage('');
+                                            }}
+                                            isConverting={loading}
+                                        />
+                                    </div>
+                                );
+                            })()}
+
+
+                            {downloadUrl ? (
+                                <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginTop: '1rem' }}>
+                                    <button
+                                        onClick={() => {
+                                            const link = document.createElement('a');
+                                            link.href = downloadUrl;
+                                            link.setAttribute('download', `converted_${selectedTool.target === 'pdf' ? 'document' : (files.length > 0 ? 'merged' : file.name.split('.')[0])}.${selectedTool.target}`);
+                                            document.body.appendChild(link);
+                                            link.click();
+                                            link.remove();
+                                        }}
+                                        style={{
+                                            backgroundColor: '#CBB9A4', // Beige
+                                            color: '#1D3557', // Navy text
+                                            padding: '1rem 2rem',
+                                            borderRadius: '50px',
+                                            border: 'none',
+                                            fontSize: '1.1rem',
+                                            fontWeight: 'bold',
+                                            cursor: 'pointer',
+                                            boxShadow: '0 4px 15px rgba(203, 185, 164, 0.4)',
+                                            transition: 'all 0.2s',
+                                        }}
+                                        onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+                                        onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                                    >
+                                        Download Local
+                                    </button>
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={handleConvert}
+                                    disabled={loading || (!file && files.length < 2)}
+                                    style={{
+                                        background: loading && progress > 0
+                                            ? `linear-gradient(to right, #B0D8F5 ${progress}%, #CBB9A4 ${progress}%)`
+                                            : (loading || (!file && files.length < 2) ? '#ccc' : '#CBB9A4'),
+                                        color: '#1D3557',
+                                        padding: '1rem 2.5rem',
+                                        borderRadius: '50px',
+                                        border: 'none',
+                                        fontSize: '1.1rem',
+                                        fontWeight: 'bold',
+                                        cursor: loading || (!file && files.length < 2) ? 'not-allowed' : 'pointer',
+                                        minWidth: '200px',
+                                        boxShadow: loading ? 'none' : '0 4px 10px rgba(0,0,0,0.1)',
+                                        transition: 'background 0.3s ease-out, transform 0.2s',
+                                        position: 'relative',
+                                        overflow: 'hidden'
+                                    }}
+                                    onMouseOver={(e) => {
+                                        if (!loading && (file || files.length >= 2)) {
+                                            e.currentTarget.style.transform = 'scale(1.02)'
+                                        }
+                                    }}
+                                    onMouseOut={(e) => {
+                                        if (!loading && (file || files.length >= 2)) {
+                                            e.currentTarget.style.transform = 'scale(1)'
+                                        }
+                                    }}
+                                >
+                                    <span style={{ position: 'relative', zIndex: 1 }}>
+                                        {loading ? 'Converting...' : 'Convert'}
+                                    </span>
+                                </button>
+                            )}
+
+                            {message && (
+                                <div style={{
+                                    marginTop: '2rem',
+                                    padding: '1rem',
+                                    borderRadius: '8px',
+                                    backgroundColor: message.includes('failed') || message.includes('Invalid') ? '#FFEBEE' : '#E8F5E9',
+                                    color: message.includes('failed') || message.includes('Invalid') ? '#C62828' : '#2E7D32',
+                                    fontWeight: '600'
+                                }}>
+                                    {message}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
                 </main>
             )}
         </div>

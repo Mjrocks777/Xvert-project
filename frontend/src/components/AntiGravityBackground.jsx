@@ -42,7 +42,6 @@ export default function AntiGravityBackground({ children }) {
     return (
         <div style={{
             position: 'relative',
-            minHeight: '100vh',
             overflow: 'hidden',
         }}>
             {/* Layer 1: Base gradient (shifts with mouse) */}

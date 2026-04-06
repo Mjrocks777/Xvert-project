@@ -27,6 +27,7 @@ from app.services.image_converter import (
     get_mime_type,
     validate_format,
     SUPPORTED_FORMATS,
+    scrub_image_metadata,
 )
 from app.services.data_converter import (
     convert_data,
@@ -34,6 +35,7 @@ from app.services.data_converter import (
     get_data_content_type,
     SUPPORTED_DATA_FORMATS,
 )
+from app.services.document_converter import convert_document as _convert_doc
 from app.utils.file_utils import (
     get_format_from_filename,
     get_output_filename,
@@ -43,7 +45,8 @@ from app.utils.file_utils import (
     get_data_format_from_filename,
     get_data_output_filename,
     save_to_history,
-    HISTORY_DIR
+    HISTORY_DIR,
+    fetch_cloud_file
 )
 from app.config import settings
 from app.utils.auth import get_optional_user
@@ -106,15 +109,27 @@ async def download_history_file(filename: str):
 @router.post("/image")
 async def convert_image_endpoint(
     request: Request,
-    file: UploadFile = File(..., description="Image file to convert"),
-    source_format: Optional[str] = Form(
-        default=None,
-        description="Source format (auto-detected if not provided)"
-    ),
     target_format: str = Form(
         ...,
         description="Target format: png, jpg, jpeg, or gif"
     ),
+    file: Optional[UploadFile] = File(None, description="Image file to convert"),
+    cloud_url: Optional[str] = Form(None),
+    filename: Optional[str] = Form(None),
+    source_format: Optional[str] = Form(
+        default=None,
+        description="Source format (auto-detected if not provided)"
+    ),
+    #exif data srubbing for privacy mode NEW
+
+    privacy_mode: bool = Form(
+        default=False, 
+        description="Enable Privacy Mode to strip sensitive EXIF metadata"
+    ),
+
+    width: Optional[int] = Form(default=None, description="Target width in pixels (auto-scales height if blank)"),
+    height: Optional[int] = Form(default=None, description="Target height in pixels (auto-scales width if blank)"),
+    quality: int = Form(default=95, ge=1, le=100, description="Compression quality (1-100, affects JPEGs)"),
 ):
     """
     Convert an image to a different format.
@@ -152,6 +167,13 @@ async def convert_image_endpoint(
                 detail=f"Invalid source format '{source_format}'. Allowed: {', '.join(SUPPORTED_FORMATS)}"
             )
 
+    # Ensure file or cloud_url is provided
+    if not file and not cloud_url:
+        raise HTTPException(status_code=400, detail="Must provide either file or cloud_url")
+        
+    if cloud_url:
+        file = fetch_cloud_file(cloud_url, filename or "cloud_image")
+
     # Auto-detect source format from filename if not provided
     if not source_format:
         source_format = get_format_from_filename(file.filename or "")
@@ -167,7 +189,14 @@ async def convert_image_endpoint(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to read file: {str(e)}")
 
-    # Validate file size
+    # --- 🛡️ PRIVACY MODE INTERCEPT --- meta data scrubber NEW
+    if privacy_mode:
+        try:
+            file_bytes = scrub_image_metadata(file_bytes)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to scrub EXIF data: {str(e)}")
+
+    # Validate file size (Done AFTER scrub in case scrubbing reduced size)
     if not validate_file_size(len(file_bytes), settings.MAX_FILE_SIZE):
         max_mb = settings.MAX_FILE_SIZE / (1024 * 1024)
         raise HTTPException(
@@ -176,12 +205,16 @@ async def convert_image_endpoint(
         )
 
     # Check if source and target are the same
-    if source_format == target_format or (source_format == "jpeg" and target_format == "jpg") or (source_format == "jpg" and target_format == "jpeg"):
+    is_same_format = source_format == target_format or (source_format == "jpeg" and target_format == "jpg") or (source_format == "jpg" and target_format == "jpeg")
+    
+    # Check if the user is actually asking the API to do work (tweaking)
+    is_tweaking = privacy_mode or (width is not None) or (height is not None) or (quality != 95)
+    
+    if is_same_format and not is_tweaking:
         raise HTTPException(
             status_code=400,
-            detail=f"Source and target formats are the same ({source_format}). No conversion needed."
+            detail=f"Source and target formats are the same ({source_format}). No conversion needed unless you are applying privacy mode, resizing, or compressing."
         )
-
     # --- Supabase: create pending record + upload original ---
     conversion_id = None
     if user_id:
@@ -206,6 +239,9 @@ async def convert_image_endpoint(
             file_bytes=file_bytes,
             source_format=source_format,
             target_format=target_format,
+            width=width,     # <-- ADD THIS
+            height=height,   # <-- ADD THIS
+            quality=quality  # <-- ADD THIS
         )
     except ValueError as e:
         if conversion_id:
@@ -250,14 +286,16 @@ async def convert_image_endpoint(
 @router.post("/data")
 async def convert_data_endpoint(
     request: Request,
-    file: UploadFile = File(..., description="Data file to convert"),
-    source_format: Optional[str] = Form(
-        default=None,
-        description="Source format (auto-detected if not provided)"
-    ),
     target_format: str = Form(
         ...,
         description="Target format: json, csv, xlsx, or xml"
+    ),
+    file: Optional[UploadFile] = File(None, description="Data file to convert"),
+    cloud_url: Optional[str] = Form(None),
+    filename: Optional[str] = Form(None),
+    source_format: Optional[str] = Form(
+        default=None,
+        description="Source format (auto-detected if not provided)"
     ),
 ):
     """
@@ -295,6 +333,12 @@ async def convert_data_endpoint(
                 status_code=400,
                 detail="Could not detect source format. Please provide source_format parameter."
             )
+    # Ensure file or cloud_url is provided
+    if not file and not cloud_url:
+        raise HTTPException(status_code=400, detail="Must provide either file or cloud_url")
+
+    if cloud_url:
+        file = fetch_cloud_file(cloud_url, filename or "cloud_data")
 
     # Read file contents
     try:
@@ -487,3 +531,268 @@ async def get_data_formats():
             "xml": "Expected structure: <root><row><col>value</col></row></root>"
         }
     }
+# REMOTE FETCH ENDPOINTS
+# =============================================================================
+
+@router.post("/remote-fetch")
+async def remote_fetch_convert(
+    url: str = Form(..., description="URL of the file to fetch and convert"),
+    target_format: Optional[str] = Form(None, description="Target format (optional - auto-detected if not provided)"),
+):
+    """
+    Fetch a file from a URL and convert it to a different format.
+    
+    This endpoint:
+    1. Downloads the file from the provided URL
+    2. Auto-detects the file type
+    3. Converts it to the target format (or suggests options if not specified)
+    4. Returns the converted file
+    
+    **Supported URLs**: Any publicly accessible HTTP/HTTPS URL
+    **Supported formats**: Images (PNG, JPG, JPEG, GIF), Documents (PDF, DOCX), Data (JSON, CSV, XLSX, XML)
+    
+    **Examples**:
+    - Google Drive: https://drive.google.com/file/d/FILE_ID/view
+    - Dropbox: https://www.dropbox.com/s/FILE_ID/filename.pdf
+    - Direct links: https://example.com/image.png
+    
+    **Notes**:
+    - Large files may take time to download
+    - Some cloud services require special sharing settings
+    - Google Drive links need to be set to "Anyone with the link can view"
+    """
+    if not url or not url.startswith(('http://', 'https://')):
+        raise HTTPException(status_code=400, detail="Invalid URL. Must be a valid HTTP/HTTPS URL.")
+
+    try:
+        # Fetch the file from URL
+        # For Google Drive URLs, the last path segment is "view" (not a real filename),
+        # so we must rely on content-based format detection after downloading.
+        if 'drive.google.com' in url:
+            filename = "remote_file"
+        else:
+            filename = url.split('/')[-1] or "remote_file"
+            if '?' in filename:
+                filename = filename.split('?')[0]
+            if not filename or '.' not in filename:
+                filename = "remote_file"
+
+        file = fetch_cloud_file(url, filename)
+
+        # Read file contents
+        file_bytes = await file.read()
+
+        # Validate file size
+        if not validate_file_size(len(file_bytes), settings.MAX_FILE_SIZE):
+            max_mb = settings.MAX_FILE_SIZE / (1024 * 1024)
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large. Maximum size is {max_mb:.0f}MB."
+            )
+
+        # Auto-detect file type from content and filename
+        detected_format = None
+        content_type = None
+
+        # Check filename extension first
+        filename_lower = file.filename.lower()
+
+        # Image formats
+        if filename_lower.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
+            detected_format = get_format_from_filename(file.filename)
+            if filename_lower.endswith('.webp'):
+                detected_format = "webp"
+            content_type = "image"
+        # Data formats
+        elif filename_lower.endswith(('.json', '.csv', '.xlsx', '.xml')):
+            detected_format = get_data_format_from_filename(file.filename)
+            content_type = "data"
+        # Document formats (basic detection)
+        elif filename_lower.endswith(('.pdf', '.docx')):
+            if filename_lower.endswith('.pdf'):
+                detected_format = "pdf"
+                content_type = "document"
+            elif filename_lower.endswith('.docx'):
+                detected_format = "docx"
+                content_type = "document"
+
+        # If we couldn't detect from filename, try content analysis
+        if not detected_format:
+            # Check for common file signatures
+            if file_bytes.startswith(b'\x89PNG'):
+                detected_format = "png"
+                content_type = "image"
+            elif file_bytes.startswith(b'\xff\xd8'):
+                detected_format = "jpg"
+                content_type = "image"
+            elif file_bytes.startswith(b'GIF8'):
+                detected_format = "gif"
+                content_type = "image"
+            elif len(file_bytes) >= 12 and file_bytes.startswith(b'RIFF') and file_bytes[8:12] == b'WEBP':
+                detected_format = "webp"
+                content_type = "image"
+            elif file_bytes.startswith(b'%PDF'):
+                detected_format = "pdf"
+                content_type = "document"
+            elif file_bytes.startswith(b'PK\x03\x04'):  # ZIP signature (DOCX/XLSX)
+                if b'word/' in file_bytes[:1000]:  # DOCX
+                    detected_format = "docx"
+                    content_type = "document"
+                elif b'xl/' in file_bytes[:1000]:  # XLSX
+                    detected_format = "xlsx"
+                    content_type = "data"
+            elif file_bytes.strip().startswith(b'{') or file_bytes.strip().startswith(b'['):
+                detected_format = "json"
+                content_type = "data"
+            elif b',' in file_bytes[:100]:  # Simple CSV detection
+                detected_format = "csv"
+                content_type = "data"
+
+        if not detected_format:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not detect file type. Supported formats: PNG, JPG, GIF, PDF, DOCX, JSON, CSV, XLSX, XML"
+            )
+
+        # If no target format specified, suggest conversions
+        if not target_format:
+            suggestions = []
+            if content_type == "image":
+                suggestions = ["png", "jpg", "gif"]
+                suggestions = [fmt for fmt in suggestions if fmt != detected_format]
+            elif content_type == "document":
+                if detected_format == "pdf":
+                    suggestions = ["docx"]
+                elif detected_format == "docx":
+                    suggestions = ["pdf"]
+            elif content_type == "data":
+                suggestions = ["json", "csv", "xlsx", "xml"]
+                suggestions = [fmt for fmt in suggestions if fmt != detected_format]
+
+            return {
+                "detected_format": detected_format,
+                "content_type": content_type,
+                "file_size": len(file_bytes),
+                "suggested_conversions": suggestions,
+                "message": f"File detected as {detected_format.upper()}. Choose a target format to convert."
+            }
+
+        # Perform conversion based on content type
+        converted_bytes = None
+        output_filename = None
+
+        if content_type == "image":
+            target_format = target_format.lower()
+
+            # Image → PDF is a document conversion (handled by document_converter).
+            if target_format == "pdf":
+                content_type = "document"
+                try:
+                    output_path = await _convert_doc(
+                        file_bytes,
+                        file.filename or f"remote.{detected_format}",
+                        detected_format,
+                        target_format,
+                    )
+                    with open(output_path, "rb") as f:
+                        converted_bytes = f.read()
+                    if os.path.exists(output_path):
+                        os.remove(output_path)
+                    output_filename = get_output_filename(file.filename or f"remote.{detected_format}", target_format)
+                except ValueError as ve:
+                    raise HTTPException(status_code=400, detail=str(ve))
+                except Exception as ex:
+                    raise HTTPException(status_code=400, detail=f"Unsupported conversion or failure: {str(ex)}")
+
+            else:
+                if not validate_format(target_format):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid target format '{target_format}'. Allowed: png, jpg, jpeg, gif, pdf"
+                    )
+                if detected_format == target_format:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Source and target formats are the same ({detected_format}). No conversion needed."
+                    )
+
+                converted_bytes, _ = convert_image(
+                    file_bytes=file_bytes,
+                    source_format=detected_format,
+                    target_format=target_format,
+                )
+                output_filename = get_output_filename(file.filename, target_format)
+
+        elif content_type == "data":
+            target_format = target_format.lower()
+            if not validate_data_format(target_format):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid target format '{target_format}'. Allowed: json, csv, xlsx, xml"
+                )
+
+            if detected_format == target_format:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Source and target formats are the same ({detected_format}). No conversion needed."
+                )
+
+            converted_bytes, _, _ = convert_data(
+                file_bytes=file_bytes,
+                source_format=detected_format,
+                target_format=target_format,
+            )
+            output_filename = get_data_output_filename(file.filename, target_format)
+        elif content_type == "document":
+            try:
+                # _convert_doc now returns an absolute path to a temp file
+                output_path = await _convert_doc(file_bytes, file.filename or f"remote.{detected_format}", detected_format, target_format)
+                
+                with open(output_path, "rb") as f:
+                    converted_bytes = f.read()
+                
+                if os.path.exists(output_path):
+                    os.remove(output_path)
+                
+                output_filename = get_output_filename(file.filename or f"remote.{detected_format}", target_format)
+            except ValueError as ve:
+                raise HTTPException(status_code=400, detail=str(ve))
+            except Exception as ex:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported conversion or failure: {str(ex)}"
+                )
+
+        if not converted_bytes:
+            raise HTTPException(status_code=500, detail="Conversion failed")
+
+        # Sanitize filename for HTTP headers
+        output_filename = sanitize_filename(output_filename)
+
+        # Save to history
+        save_to_history(converted_bytes, output_filename)
+
+        # Determine content type for response
+        if content_type == "image":
+            media_type = get_content_type(target_format)
+        elif content_type == "data":
+            media_type = get_data_content_type(target_format)
+        else:
+            media_type = "application/octet-stream"
+
+        # Return the converted file
+        return Response(
+            content=converted_bytes,
+            media_type=media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{output_filename}"'
+            }
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Remote fetch failed: {str(e)}"
+        )

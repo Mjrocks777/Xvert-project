@@ -38,7 +38,7 @@ const getIconConfig = (type) => {
     }
 }
 
-const ToolIcon = ({ tool }) => {
+const ToolIcon = ({ tool, simple = false, iconSize = 42 }) => {
     // Determine Source and Target types
     let sourceType = tool.type
     let targetType = tool.target
@@ -46,16 +46,31 @@ const ToolIcon = ({ tool }) => {
     // Refine source types based on ID/Name if generic
     if (tool.id === 'merge-pdf') {
         sourceType = 'pdf'
-    } else if (tool.id.includes('-to-')) {
+    } else if (tool.id?.includes('-to-')) {
         // Smart detection: "json-to-csv" -> source=json
         const parts = tool.id.split('-to-')
         sourceType = parts[0]
     } else {
         // Fallback for other naming conventions
-        if (tool.id.includes('json')) sourceType = 'json'
-        else if (tool.id.includes('csv')) sourceType = 'csv'
-        else if (tool.id.includes('excel')) sourceType = 'xlsx'
-        else if (tool.id.includes('xml')) sourceType = 'xml'
+        if (tool.id?.includes('json')) sourceType = 'json'
+        else if (tool.id?.includes('csv')) sourceType = 'csv'
+        else if (tool.id?.includes('excel')) sourceType = 'xlsx'
+        else if (tool.id?.includes('xml')) sourceType = 'xml'
+    }
+
+    // Single Icon Mode (Clean & Simple)
+    if (simple) {
+        const config = getIconConfig(sourceType || targetType)
+        return (
+            <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.12))'
+            }}>
+                <config.Icon size={iconSize} color={config.color} />
+            </div>
+        )
     }
 
     // Configs

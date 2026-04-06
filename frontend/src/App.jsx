@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom'
 import { ThemeProvider } from './components/ThemeContext'
 import { ToastProvider } from './components/ToastContext'
 import Home from './pages/Home'
@@ -20,6 +20,7 @@ function AppContent() {
   const location = useLocation();
   const authPaths = ['/login', '/signup', '/forgot-password', '/update-password'];
   const isAuthPage = authPaths.includes(location.pathname);
+  const isHomePage = location.pathname === '/';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
@@ -34,7 +35,7 @@ function AppContent() {
         <Route path="/about" element={<About />} />
         <Route path="/developer" element={<DeveloperPortal />} />
       </Routes>
-      {isAuthPage ? <MiniFooter /> : <MegaFooter />}
+      {isAuthPage || isHomePage ? <MiniFooter /> : <MegaFooter />}
     </div>
   );
 }
@@ -44,19 +45,7 @@ function App() {
     <ThemeProvider>
       <ToastProvider>
         <Router>
-          <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-            <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/signup" element={<Signup />} />
-              <Route path="/forgot-password" element={<ForgotPassword />} />
-              <Route path="/update-password" element={<UpdatePassword />} />
-              <Route path="/profile" element={<Profile />} />
-              <Route path="/history" element={<History />} />
-              <Route path="/developer" element={<DeveloperPortal />} />
-            </Routes>
-            <Footer />
-          </div>
+          <AppContent />
         </Router>
       </ToastProvider>
     </ThemeProvider>
