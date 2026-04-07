@@ -320,9 +320,13 @@ const tools = [
     { id: 'docx-to-pdf', name: 'Word to PDF', desc: 'Convert DOCX files to PDF documents.', icon: '📝', type: 'docx', target: 'pdf' },
     { id: 'image-to-pdf', name: 'Image to PDF', desc: 'Convert JPG, PNG, or GIF images into PDF documents.', icon: '🖼️', type: 'image', target: 'pdf' },
     { id: 'merge-pdf', name: 'Merge PDF', desc: 'Combine multiple PDFs into one unified document.', icon: '🔗', type: 'merge', target: 'pdf' },
+    { id: 'compress-pdf', name: 'Compress PDF', desc: 'Reduce the file size of your PDF documents.', icon: '🗜️', type: 'pdf', target: 'compress' },
+    { id: 'split-pdf', name: 'Split PDF', desc: 'Extract specific pages from your PDF documents.', icon: '📑', type: 'pdf', target: 'split' },
     { id: 'pdf-to-jpg', name: 'PDF to JPG', desc: 'Convert PDF pages to JPG images.', icon: 'fz', type: 'pdf', target: 'jpg' },
     { id: 'pdf-to-png', name: 'PDF to PNG', desc: 'Convert PDF pages to PNG images.', icon: 'fz', type: 'pdf', target: 'png' },
     // Image Tools
+    { id: 'compress-image', name: 'Compress Image', desc: 'Reduce file size of your images (JPG, PNG, GIF).', icon: '📉', type: 'image', target: 'compress-img' },
+    { id: 'scrub-data', name: 'Scrub Data (EXIF)', desc: 'Strip privacy metadata from your images.', icon: '🛡️', type: 'image', target: 'scrub' },
     { id: 'jpg-to-png', name: 'JPG to PNG', desc: 'Convert JPG images to PNG format.', icon: '📷', type: 'jpg', target: 'png' },
     { id: 'png-to-jpg', name: 'PNG to JPG', desc: 'Convert PNG images to JPG format.', icon: '📸', type: 'png', target: 'jpg' },
     { id: 'jpg-to-gif', name: 'JPG to GIF', desc: 'Convert JPG images to GIF format.', icon: '👾', type: 'jpg', target: 'gif' },
@@ -392,6 +396,7 @@ export default function Home() {
 
     const isSameFormat = useMemo(() => {
         if (!selectedTool || !file) return false
+        if (selectedTool.id === 'scrub-data' || selectedTool.id === 'compress-pdf' || selectedTool.id === 'split-pdf' || selectedTool.id === 'compress-image') return false
         const sourceExt = file.name?.split('.').pop()?.toLowerCase() || ''
         const targetExt = selectedTool.target?.toLowerCase() || ''
         return sourceExt === targetExt || (sourceExt === 'jpg' && targetExt === 'jpeg') || (sourceExt === 'jpeg' && targetExt === 'jpg')
@@ -592,9 +597,8 @@ export default function Home() {
         // Reset advanced settings
         setShowAdvanced(false)
         setPrivacyMode(false)
-        setTargetWidth('')
         setTargetHeight('')
-        setQuality(95)
+        setQuality(tool.id === 'compress-image' ? 60 : 95)
         setCompressPdf(false)
         setPageRange('')
     }
@@ -660,51 +664,69 @@ export default function Home() {
             const trimmedUrl = remoteUrl?.trim()
             console.log("trimmedUrl:", trimmedUrl)
 
+            let finalTarget = selectedTool?.target;
+            let forcePrivacyMode = false;
+            let forceCompress = false;
+
+            if (selectedTool?.id === 'scrub-data') {
+                forcePrivacyMode = true;
+                const sourceExt = file ? file.name.split('.').pop().toLowerCase() : (trimmedUrl ? trimmedUrl.split('.').pop().toLowerCase() : 'jpg');
+                finalTarget = ['jpg', 'jpeg', 'png', 'gif'].includes(sourceExt) ? sourceExt : 'jpg';
+            } else if (selectedTool?.id === 'compress-pdf') {
+                forceCompress = true;
+                finalTarget = 'pdf';
+            } else if (selectedTool?.id === 'split-pdf') {
+                finalTarget = 'pdf';
+            } else if (selectedTool?.id === 'compress-image') {
+                const sourceExt = file ? file.name.split('.').pop().toLowerCase() : (trimmedUrl ? trimmedUrl.split('.').pop().toLowerCase() : 'jpg');
+                finalTarget = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(sourceExt) ? sourceExt : 'jpg';
+            }
+
             const options = {
-                privacyMode,
+                privacyMode: privacyMode || forcePrivacyMode,
                 width: targetWidth ? parseInt(targetWidth) : null,
                 height: targetHeight ? parseInt(targetHeight) : null,
                 quality: parseInt(quality),
-                compress: compressPdf,
+                compress: compressPdf || forceCompress,
                 pageRange: pageRange?.trim() || null
             }
 
             if (trimmedUrl) {
-                console.log("Calling remoteConvert for:", trimmedUrl, "target:", selectedTool?.target)
-                resultBlob = await conversionService.remoteConvert(trimmedUrl, selectedTool?.target, options)
+                console.log("Calling remoteConvert for:", trimmedUrl, "target:", finalTarget)
+                resultBlob = await conversionService.remoteConvert(trimmedUrl, finalTarget, options)
                 console.log("remoteConvert returned:", resultBlob)
             } else if (file && (file.isRemote || file.isCloudUrl)) {
                 const cUrl = file.url
                 if (selectedTool.type === 'pdf' && selectedTool.id !== 'merge-pdf') {
-                    resultBlob = await conversionService.convertDocument(null, 'pdf', selectedTool.target, cUrl, options)
-                } else if (selectedTool.type === 'image') {
-                    resultBlob = await conversionService.convertImage(null, selectedTool.target, cUrl, options)
+                    resultBlob = await conversionService.convertDocument(null, 'pdf', finalTarget, cUrl, options)
+                } else if (selectedTool.type === 'image' || selectedTool.id === 'scrub-data') {
+                    resultBlob = await conversionService.convertImage(null, finalTarget, cUrl, options)
                 } else if (selectedTool.type === 'docx') {
                     resultBlob = await conversionService.convertDocument(null, 'docx', 'pdf', cUrl, options)
                 } else if (selectedTool.type === 'data') {
-                    resultBlob = await conversionService.convertData(null, selectedTool.target, cUrl)
+                    resultBlob = await conversionService.convertData(null, finalTarget, cUrl)
                 } else {
-                    resultBlob = await conversionService.remoteConvert(cUrl, selectedTool.target, options)
+                    resultBlob = await conversionService.remoteConvert(cUrl, finalTarget, options)
                 }
             } else if (selectedTool.id === 'merge-pdf') {
                 resultBlob = await conversionService.mergeDocuments(files)
             } else if (selectedTool.id === 'image-to-pdf') {
                 resultBlob = await conversionService.convertDocument(file, 'image', 'pdf', null, options)
             } else if (selectedTool.type === 'pdf') {
-                resultBlob = await conversionService.convertDocument(file, 'pdf', selectedTool.target, null, options)
-            } else if (selectedTool.type === 'image' || selectedTool.type === 'jpg' || selectedTool.type === 'png' || selectedTool.type === 'gif') {
-                resultBlob = await conversionService.convertImage(file, selectedTool.target, null, options)
+                resultBlob = await conversionService.convertDocument(file, 'pdf', finalTarget, null, options)
+            } else if (selectedTool.type === 'image' || selectedTool.type === 'jpg' || selectedTool.type === 'png' || selectedTool.type === 'gif' || selectedTool.id === 'scrub-data') {
+                resultBlob = await conversionService.convertImage(file, finalTarget, null, options)
             } else if (selectedTool.type === 'docx') {
                 resultBlob = await conversionService.convertDocument(file, 'docx', 'pdf', null, options)
             } else if (selectedTool.type === 'data') {
-                resultBlob = await conversionService.convertData(file, selectedTool.target)
+                resultBlob = await conversionService.convertData(file, finalTarget)
             } else {
                 clearInterval(simulatedProgressInterval); // batch handles its own
                 setIsProcessing(false);
-                await startBatch(pendingFiles, selectedTool.target)
+                await startBatch(pendingFiles, finalTarget)
                 setMascotState('success')
                 addToast('Conversion successful! 🎉', 'success')
-                saveRecent(selectedTool.name, selectedTool.target)
+                saveRecent(selectedTool.name, finalTarget)
                 setTimeout(() => setMascotState('idle'), 3000)
                 return
             }
@@ -1481,9 +1503,13 @@ export default function Home() {
                                     </motion.div>
                                 )}
 
-                                {/* Advanced Settings Toggle — only for image and PDF tools, not merge-pdf */}
+                                {/* Advanced Settings Toggle — only for image and PDF tools with available settings */}
                                 {!isConverting && !isDone && (pendingFiles.length > 0 || (remoteUrl && remoteUrl.trim() !== '')) &&
                                  selectedTool?.id !== 'merge-pdf' &&
+                                 selectedTool?.id !== 'compress-pdf' &&
+                                 selectedTool?.id !== 'split-pdf' &&
+                                 selectedTool?.id !== 'compress-image' &&
+                                 selectedTool?.id !== 'scrub-data' &&
                                  (selectedTool?.type === 'pdf' || selectedTool?.type === 'image' || selectedTool?.type === 'jpg' || selectedTool?.type === 'png' || selectedTool?.type === 'gif') && (
                                     <div style={{ margin: '0.5rem 0 1.5rem' }}>
                                         <motion.button
@@ -1538,31 +1564,7 @@ export default function Home() {
                                                         {/* Image Specific Settings */}
                                                         {(selectedTool.type === 'image' || selectedTool.type === 'jpg' || selectedTool.type === 'png' || selectedTool.type === 'gif') && (
                                                             <>
-                                                                <label
-                                                                    onClick={() => setPrivacyMode(!privacyMode)}
-                                                                    style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', fontSize: '0.9rem', color: 'var(--ag-text)', userSelect: 'none' }}
-                                                                >
-                                                                    {/* Custom checkbox matching input box style */}
-                                                                    <div style={{
-                                                                        width: '18px',
-                                                                        height: '18px',
-                                                                        borderRadius: '5px',
-                                                                        border: '1px solid var(--ag-glass-border)',
-                                                                        background: privacyMode ? 'var(--ag-accent)' : 'var(--ag-input-bg)',
-                                                                        flexShrink: 0,
-                                                                        display: 'flex',
-                                                                        alignItems: 'center',
-                                                                        justifyContent: 'center',
-                                                                        transition: 'background 0.2s ease',
-                                                                    }}>
-                                                                        {privacyMode && (
-                                                                            <svg width="11" height="9" viewBox="0 0 11 9" fill="none">
-                                                                                <path d="M1 4L4 7.5L10 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                                                                            </svg>
-                                                                        )}
-                                                                    </div>
-                                                                    Scrub Privacy Data (EXIF)
-                                                                </label>
+
                                                                 
                                                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                                                                     <div>
@@ -1584,22 +1586,6 @@ export default function Home() {
                                                                 </div>
                                                             </>
                                                         )}
-
-                                                        {/* PDF Specific Settings */}
-                                                        {selectedTool.type === 'pdf' && (
-                                                            <>
-                                                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', fontSize: '0.9rem', color: 'var(--ag-text)' }}>
-                                                                    <input type="checkbox" checked={compressPdf} onChange={(e) => setCompressPdf(e.target.checked)} style={{ width: '18px', height: '18px', accentColor: 'var(--ag-accent)' }} />
-                                                                    Compress PDF File Size
-                                                                </label>
-                                                                
-                                                                <div>
-                                                                    <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--ag-text-secondary)', marginBottom: '0.4rem' }}>Specific Pages</label>
-                                                                    <input type="text" placeholder="e.g. 1-5, 8" value={pageRange} onChange={(e) => setPageRange(e.target.value)} style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', background: 'var(--ag-input-bg)', border: '1px solid var(--ag-glass-border)', color: 'var(--ag-text)', fontSize: '0.9rem' }} />
-                                                                    <p style={{ fontSize: '0.7rem', color: 'var(--ag-text-secondary)', marginTop: '0.3rem' }}>Leave blank to include all pages</p>
-                                                                </div>
-                                                            </>
-                                                        )}
                                                     </div>
                                                 </motion.div>
                                             )}
@@ -1611,13 +1597,44 @@ export default function Home() {
 
                                 {/* Action Buttons */}
                                 {resultBlob ? (
-                                    <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-                                        <motion.button
+                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.2rem' }}>
+                                        {(selectedTool?.id === 'compress-pdf' || selectedTool?.id === 'compress-image') && file?.size && resultBlob?.size && file.size > resultBlob.size && (
+                                            <motion.div
+                                                initial={{ opacity: 0, scale: 0.9 }}
+                                                animate={{ opacity: 1, scale: 1 }}
+                                                style={{
+                                                    background: 'var(--ag-glass-bg)',
+                                                    backdropFilter: 'blur(12px)',
+                                                    WebkitBackdropFilter: 'blur(12px)',
+                                                    border: '1px solid var(--ag-glass-border)',
+                                                    padding: '0.5rem 1.2rem',
+                                                    borderRadius: '20px',
+                                                    color: 'var(--ag-text)',
+                                                    fontWeight: 500,
+                                                    fontSize: '0.92rem',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.5rem',
+                                                    boxShadow: 'var(--ag-shadow-sm)'
+                                                }}
+                                            >
+                                                <span style={{ color: 'var(--ag-accent)', fontSize: '1.2rem' }}>✨</span>
+                                                Compressed by {((1 - (resultBlob.size / file.size)) * 100).toFixed(1)}% ({((file.size - resultBlob.size) > 1048576 ? ((file.size - resultBlob.size) / 1048576).toFixed(1) + ' MB' : ((file.size - resultBlob.size) / 1024).toFixed(1) + ' KB')} saved)
+                                            </motion.div>
+                                        )}
+                                        <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap', width: '100%' }}>
+                                            <motion.button
                                             onClick={() => {
                                                 const link = document.createElement('a')
                                                 link.href = resultUrl
-                                                const baseName = selectedTool?.target === 'pdf' ? 'document' : (files.length > 0 ? 'merged' : (file?.name?.split('.')[0] || 'remote_result'))
-                                                link.setAttribute('download', `converted_${baseName}.${selectedTool?.target || 'file'}`)
+                                                const getTargetExt = (tool, originalFile) => {
+                                                    if (tool?.id === 'scrub-data' && originalFile) return originalFile.name.split('.').pop()
+                                                    if (tool?.id === 'compress-pdf' || tool?.id === 'split-pdf') return 'pdf'
+                                                    return tool?.target || 'file'
+                                                }
+                                                const fileExt = getTargetExt(selectedTool, file)
+                                                const baseName = (selectedTool?.type === 'pdf' && selectedTool?.id !== 'merge-pdf') ? 'document' : (files.length > 0 ? 'merged' : (file?.name?.split('.')[0] || 'remote_result'))
+                                                link.setAttribute('download', `converted_${baseName}.${fileExt}`)
                                                 document.body.appendChild(link)
                                                 link.click()
                                                 link.remove()
@@ -1635,34 +1652,71 @@ export default function Home() {
 
                                         <GoogleDriveSaver 
                                             downloadUrl={resultUrl} 
-                                            filename={`converted_${selectedTool?.target === 'pdf' ? 'document' : (files.length > 0 ? 'merged' : (file?.name?.split('.')[0] || 'remote_result'))}.${selectedTool?.target || 'file'}`} 
+                                            filename={`converted_${(selectedTool?.type === 'pdf' && selectedTool?.id !== 'merge-pdf') ? 'document' : (files.length > 0 ? 'merged' : (file?.name?.split('.')[0] || 'remote_result'))}.${(selectedTool?.id === 'compress-pdf' || selectedTool?.id === 'split-pdf') ? 'pdf' : (selectedTool?.id === 'scrub-data' && file ? file.name.split('.').pop() : (selectedTool?.target || 'file'))}`} 
                                         />
 
                                         <DropboxSaver 
                                             downloadUrl={resultUrl} 
-                                            filename={`converted_${selectedTool?.target === 'pdf' ? 'document' : (files.length > 0 ? 'merged' : (file?.name?.split('.')[0] || 'remote_result'))}.${selectedTool?.target || 'file'}`} 
+                                            filename={`converted_${(selectedTool?.type === 'pdf' && selectedTool?.id !== 'merge-pdf') ? 'document' : (files.length > 0 ? 'merged' : (file?.name?.split('.')[0] || 'remote_result'))}.${(selectedTool?.id === 'compress-pdf' || selectedTool?.id === 'split-pdf') ? 'pdf' : (selectedTool?.id === 'scrub-data' && file ? file.name.split('.').pop() : (selectedTool?.target || 'file'))}`} 
                                         />
+                                        </div>
                                     </div>
                                 ) : (
-                                    <motion.button
-                                        type="button"
-                                        onClick={handleConvert}
-                                        disabled={!canConvert}
-                                        className="ag-btn-primary"
-                                        whileHover={canConvert ? { scale: 1.06 } : {}}
-                                        whileTap={canConvert ? { scale: 0.95 } : {}}
-                                        transition={springBounce}
-                                        style={{
-                                            display: 'block',
-                                            margin: '0 auto',
-                                            minWidth: '200px',
-                                        }}
-                                    >
-                                        <span style={{ position: 'relative', zIndex: 1 }}>
-                                            Convert
-                                        </span>
-
-                                    </motion.button>
+                                    <>
+                                        {selectedTool?.id === 'compress-image' && (
+                                            <div style={{ width: '100%', maxWidth: '350px', margin: '0 auto 1.5rem auto' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
+                                                    <label style={{ fontSize: '0.85rem', color: 'var(--ag-text-secondary)', fontWeight: 500 }}>Compression Quality</label>
+                                                    <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--ag-accent)' }}>{quality}%</span>
+                                                </div>
+                                                <input type="range" min="1" max="100" value={quality} onChange={(e) => setQuality(e.target.value)} style={{ width: '100%', accentColor: 'var(--ag-accent)', cursor: 'pointer' }} />
+                                            </div>
+                                        )}
+                                        {selectedTool?.id === 'split-pdf' && (
+                                            <div style={{ width: '100%', maxWidth: '350px', margin: '0 auto 1.5rem auto' }}>
+                                                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--ag-text-secondary)', marginBottom: '0.6rem', textAlign: 'center', fontWeight: 500 }}>
+                                                    Which pages would you like to extract?
+                                                </label>
+                                                <input 
+                                                    type="text" 
+                                                    placeholder="e.g. 1-5, 8, 11-13" 
+                                                    value={pageRange} 
+                                                    onChange={(e) => setPageRange(e.target.value)} 
+                                                    style={{ 
+                                                        width: '100%', 
+                                                        padding: '0.85rem', 
+                                                        borderRadius: '12px', 
+                                                        background: 'var(--ag-input-bg)', 
+                                                        border: '1px solid var(--ag-glass-border)', 
+                                                        color: 'var(--ag-text)', 
+                                                        fontSize: '0.95rem', 
+                                                        textAlign: 'center',
+                                                        boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)',
+                                                        outline: 'none'
+                                                    }} 
+                                                />
+                                            </div>
+                                        )}
+                                        <motion.button
+                                            type="button"
+                                            onClick={handleConvert}
+                                            disabled={!canConvert || (selectedTool?.id === 'split-pdf' && !pageRange?.trim())}
+                                            className="ag-btn-primary"
+                                            whileHover={canConvert && !(selectedTool?.id === 'split-pdf' && !pageRange?.trim()) ? { scale: 1.06 } : {}}
+                                            whileTap={canConvert && !(selectedTool?.id === 'split-pdf' && !pageRange?.trim()) ? { scale: 0.95 } : {}}
+                                            transition={springBounce}
+                                            style={{
+                                                display: 'block',
+                                                margin: '0 auto',
+                                                minWidth: '200px',
+                                                opacity: (!canConvert || (selectedTool?.id === 'split-pdf' && !pageRange?.trim())) ? 0.6 : 1
+                                            }}
+                                        >
+                                            <span style={{ position: 'relative', zIndex: 1 }}>
+                                                Convert
+                                            </span>
+                                        </motion.button>
+                                    </>
                                 )}
 
                                 {/* Message */}
