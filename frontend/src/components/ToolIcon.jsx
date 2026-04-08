@@ -11,7 +11,10 @@ import {
     BsFileEarmarkFill,
     BsFiletypeJpg,
     BsFiletypePng,
-    BsFiletypeGif
+    BsFiletypeGif,
+    BsShieldLockFill,
+    BsFileEarmarkZipFill,
+    BsFileEarmarkBreakFill
 } from 'react-icons/bs'
 
 import { FaFileCsv, FaFileExcel, FaFileImage, FaFilePdf, FaFileWord, FaFileCode } from 'react-icons/fa'
@@ -34,6 +37,10 @@ const getIconConfig = (type) => {
         case 'excel': return { Icon: BsFileEarmarkSpreadsheetFill, color: '#4CAF50' } // Green
         case 'json': return { Icon: BsFiletypeJson, color: '#FFC107' } // Amber
         case 'xml': return { Icon: BsFiletypeXml, color: '#FF9800' } // Orange
+        case 'scrub': return { Icon: BsShieldLockFill, color: '#4CAF50' } // Green Shield
+        case 'compress': return { Icon: BsFileEarmarkZipFill, color: '#E91E63' } // Pink/Red zip
+        case 'compress-img': return { Icon: BsFileEarmarkZipFill, color: '#FF9800' } // Orange zip
+        case 'split': return { Icon: BsFileEarmarkBreakFill, color: '#9C27B0' } // Purple Split File
         default: return { Icon: BsFileEarmarkFill, color: '#607D8B' } // Grey
     }
 }
