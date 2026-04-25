@@ -137,13 +137,15 @@ export default function Signup() {
                         }} />
 
                         <motion.img
-                            src="/illustrations/login.png"
+                            src="/illustrations/logo.png"
                             alt="Space astronaut"
                             animate={{ y: [0, -10, 0] }}
                             transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
                             style={{
-                                width: '180px',
-                                height: 'auto',
+                                width: '240px', // Increased size from 180px
+                                height: '240px', // Set height equal to width for a perfect circle
+                                borderRadius: '50%', // Makes the image circular
+                                objectFit: 'cover',
                                 marginBottom: '1.5rem',
                                 filter: 'drop-shadow(0 10px 30px rgba(0,0,0,0.3))',
                                 position: 'relative',

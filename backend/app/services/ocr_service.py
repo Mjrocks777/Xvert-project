@@ -1,338 +1,256 @@
-"""
-OCR Service
-============
-Converts scanned PDFs and images to editable DOCX documents using:
-  - PyMuPDF (fitz)   → render PDF pages as images
-  - pytesseract      → extract text from page images
-  - python-docx      → build the output DOCX
-
-Optimised pipeline:
-  1. Render at 500 DPI
-  2. Upscale 1.5x → grayscale → autocontrast → unsharp mask → Otsu binarise
-  3. OCR via image_to_data (confidence-filtered) with --oem 1 --psm 4
-  4. Post-process (strip artefacts, normalise whitespace)
-
-Why each change matters vs the previous version
--------------------------------------------------
-  THRESHOLD  Fixed 140 captured only ~3.4% of ink pixels on bright scans
-             (mean pixel value 245/255).  Otsu calculates the optimal split
-             per-page so bright pages and dark pages are handled equally.
-             On the test PDF this captured 55% more ink strokes.
-
-  PSM MODE   --psm 6 (uniform block) assumes all text sits in one dense
-             rectangle.  Notebook pages have a single column with loose
-             spacing; --psm 4 (single column of varying sizes) matches
-             that layout better.
-
-  CONFIDENCE image_to_data returns a confidence score (0-100) for every
-             word.  Filtering words below MIN_CONFIDENCE removes garbage
-             characters without throwing away real words.  This is the
-             single biggest quality improvement for handwritten content.
-
-  UNSHARP    Replaces the simple SHARPEN filter.  Unsharp masking increases
-  MASK       local contrast around edges (letter strokes) without amplifying
-             background texture the way a plain sharpen does.
-
-  DPI        400 → 500.  Each 100 DPI increase adds ~0.5 px per stroke
-             width at typical handwriting scale.
-"""
-
+# app/services/ocr_service.py
 import io
+import logging
 import os
-import re
 import tempfile
+from pathlib import Path
+from typing import Optional
 
-import fitz          # PyMuPDF
-import numpy as np
-import pytesseract
+# ── Third-party: python-docx ──────────────────────────────────────
 from docx import Document
-from docx.enum.text import WD_BREAK
-from docx.shared import Pt
-from PIL import Image, ImageFilter, ImageOps
-
-# ---------------------------------------------------------------------------
-# Auto-detect Tesseract on Windows
-# ---------------------------------------------------------------------------
-_COMMON_TESSERACT_PATHS = [
-    r"C:\Program Files\Tesseract-OCR\tesseract.exe",
-    r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
-    r"C:\Users\{user}\AppData\Local\Tesseract-OCR\tesseract.exe",
-]
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 
-def _configure_tesseract() -> None:
+# ── Third-party: Pillow ───────────────────────────────────────────
+from PIL import Image, ImageEnhance, ImageFilter
+
+# ── Internal: your app config ─────────────────────────────────────
+from app.config import settings, GOOGLE_VISION_ENABLED
+
+
+
+from docx.shared import Pt, Inches
+
+
+logger = logging.getLogger(__name__)
+
+
+# ─────────────────────────────────────────
+#  IMAGE PREPROCESSING (improves accuracy)
+# ─────────────────────────────────────────
+
+def _preprocess_image(image: Image.Image) -> Image.Image:
+    """
+    Enhance image quality before sending to OCR.
+    Improves accuracy on scanned/low-quality images.
+    """
+    # Convert to RGB if needed (handles RGBA PNGs, etc.)
+    if image.mode not in ("RGB", "L"):
+        image = image.convert("RGB")
+
+    # Upscale if too small (Vision API struggles below 300px)
+    min_dimension = 1000
+    if min(image.size) < min_dimension:
+        scale = min_dimension / min(image.size)
+        new_size = (int(image.size[0] * scale), int(image.size[1] * scale))
+        image = image.resize(new_size, Image.LANCZOS)
+
+    # Enhance contrast for faded/scanned documents
+    image = ImageEnhance.Contrast(image).enhance(1.5)
+
+    # Slight sharpening
+    image = image.filter(ImageFilter.SHARPEN)
+
+    return image
+
+
+def _image_to_bytes(image: Image.Image) -> bytes:
+    """Convert PIL Image to PNG bytes for Vision API."""
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+# ─────────────────────────────────────────
+#  PDF → LIST OF IMAGES
+# ─────────────────────────────────────────
+
+def _pdf_to_images(file_bytes: bytes) -> list[Image.Image]:
+    """
+    Convert each PDF page into a PIL Image.
+    Uses pdf2image (poppler) for high-quality rasterization.
+    """
+    
+    from pdf2image import convert_from_bytes
+
+    images = convert_from_bytes(
+        file_bytes,
+        dpi=300,          # High DPI = better OCR accuracy
+        fmt="png",
+        thread_count=2,
+    )
+    return images
+
+
+# ─────────────────────────────────────────
+#  GOOGLE VISION OCR
+# ─────────────────────────────────────────
+
+def _ocr_with_google_vision(image_bytes: bytes) -> str:
+    """
+    Send a single image to Google Cloud Vision API.
+    Returns the extracted plain text.
+    """
+    from google.cloud import vision
+
+    client = vision.ImageAnnotatorClient()
+    image = vision.Image(content=image_bytes)
+
+    # DOCUMENT_TEXT_DETECTION is better than TEXT_DETECTION
+    # for multi-paragraph documents — preserves line breaks better
+    response = client.document_text_detection(image=image)
+
+    if response.error.message:
+        raise RuntimeError(f"Google Vision API error: {response.error.message}")
+
+    if response.full_text_annotation:
+        return response.full_text_annotation.text
+
+    return ""
+
+
+# ─────────────────────────────────────────
+#  TESSERACT FALLBACK
+# ─────────────────────────────────────────
+
+def _ocr_with_tesseract(image: Image.Image) -> str:
+    """
+    Fallback OCR using Tesseract (your existing engine).
+    Used when Google Vision is disabled or fails.
+    """
+    import pytesseract
     try:
-        pytesseract.get_tesseract_version()
-        return
-    except Exception:
-        pass
-    username = os.environ.get("USERNAME", "")
-    for path_template in _COMMON_TESSERACT_PATHS:
-        path = path_template.replace("{user}", username)
-        if os.path.isfile(path):
-            pytesseract.pytesseract.tesseract_cmd = path
-            return
+        import pytesseract
+        return pytesseract.image_to_string(image, lang="eng")
+    except Exception as e:
+        logger.error(f"Tesseract OCR failed: {e}")
+        return ""
 
 
-_configure_tesseract()
+# ─────────────────────────────────────────
+#  OCR DISPATCHER
+# ─────────────────────────────────────────
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-_TESS_CONFIG    = r"--oem 1 --psm 4"   # LSTM only, single-column layout
-_MIN_CONF       = 35                    # discard words below this confidence
-_RENDER_DPI     = 500
-_MIN_TEXT_CHARS = 30
-
-_GARBAGE_LINE   = re.compile(r"^[\s\-_=~|'\"`.,:;!?/\\(){}\[\]<>*#@$%^&]{1,3}$")
-_IMAGE_EXTS     = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".tif", ".webp"}
-
-
-# ---------------------------------------------------------------------------
-# Otsu threshold (per-page adaptive)
-# ---------------------------------------------------------------------------
-def _otsu_threshold(arr: np.ndarray) -> int:
+def _run_ocr_on_image(image: Image.Image) -> str:
     """
-    Compute the Otsu optimal binarisation threshold for a uint8 array.
-    Returns the integer threshold value (pixels > threshold → white).
+    Route to the best available OCR engine.
+    Priority: Google Vision → Tesseract fallback
     """
-    hist, _     = np.histogram(arr, bins=256, range=(0, 256))
-    total       = arr.size
-    sum_total   = int(np.dot(np.arange(256), hist))
-    sum_b, weight_b, max_var, threshold = 0, 0, 0, 128
+    processed = _preprocess_image(image)
+    image_bytes = _image_to_bytes(processed)
 
-    for t in range(256):
-        weight_b += hist[t]
-        if weight_b == 0:
-            continue
-        weight_f = total - weight_b
-        if weight_f == 0:
-            break
-        sum_b  += t * int(hist[t])
-        mean_b  = sum_b / weight_b
-        mean_f  = (sum_total - sum_b) / weight_f
-        var     = weight_b * weight_f * (mean_b - mean_f) ** 2
-        if var > max_var:
-            max_var   = var
-            threshold = t
+    if GOOGLE_VISION_ENABLED:
+        try:
+            logger.info("Using Google Vision API for OCR")
+            return _ocr_with_google_vision(image_bytes)
+        except Exception as e:
+            logger.warning(f"Google Vision failed, falling back to Tesseract: {e}")
 
-    return threshold
+    logger.info("Using Tesseract for OCR")
+    return _ocr_with_tesseract(processed)
 
 
-# ---------------------------------------------------------------------------
-# Image pre-processing
-# ---------------------------------------------------------------------------
-def _preprocess_image(img: Image.Image) -> Image.Image:
+# ─────────────────────────────────────────
+#  .DOCX BUILDER
+# ─────────────────────────────────────────
+
+def _build_docx(pages_text: list[str], source_filename: str) -> bytes:
     """
-    Prepare a page image for Tesseract.
-
-    Pipeline:
-      1. Grayscale
-      2. 1.5x upscale       — extra resolution for fine pen strokes
-      3. AutoContrast        — adaptive per-page contrast stretch;
-                               handles uneven lighting better than a
-                               fixed Contrast(2.0) multiplier
-      4. Unsharp mask        — sharpens letter edges without amplifying
-                               background texture (better than SHARPEN)
-      5. Otsu binarise       — per-image optimal threshold; always captures
-                               the correct fraction of ink regardless of
-                               scan brightness (fixed 140 failed on bright
-                               pages, capturing only 3.4% of ink pixels)
-      6. Back to L mode      — pytesseract requires L or RGB, not "1"
+    Convert extracted text pages into a formatted .docx file.
+    Each PDF page gets its own section with a page break.
     """
-    img = img.convert("L")
+    doc = Document()
 
-    w, h = img.size
-    img  = img.resize((int(w * 1.5), int(h * 1.5)), Image.LANCZOS)
+    # Document title
+    title = doc.add_heading(f"OCR Output — {source_filename}", level=1)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-    img = ImageOps.autocontrast(img, cutoff=2)
+    for page_num, text in enumerate(pages_text, start=1):
+        # Page label (for multi-page PDFs)
+        if len(pages_text) > 1:
+            page_heading = doc.add_heading(f"Page {page_num}", level=2)
+            page_heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
 
-    img = img.filter(ImageFilter.UnsharpMask(radius=2, percent=150, threshold=3))
+        # Split into paragraphs by double newlines
+        paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
 
-    arr = np.array(img)
-    t   = _otsu_threshold(arr)
-    img = img.point(lambda p: 255 if p > t else 0, mode="1")
+        if not paragraphs:
+            # If no double-newlines found, treat single lines as paragraphs
+            paragraphs = [line.strip() for line in text.split("\n") if line.strip()]
 
-    img = img.convert("L")
-    return img
+        for para_text in paragraphs:
+            para = doc.add_paragraph(para_text)
+            para.style.font.size = Pt(11)
+
+        # Page break between PDF pages (skip after last page)
+        if page_num < len(pages_text):
+            doc.add_page_break()
+
+    # Return as bytes
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer.getvalue()
 
 
-# ---------------------------------------------------------------------------
-# Confidence-filtered OCR
-# ---------------------------------------------------------------------------
-def _ocr_image(img: Image.Image) -> str:
+# ─────────────────────────────────────────
+#  MAIN PUBLIC FUNCTION
+#  (called from documents.py router)
+# ─────────────────────────────────────────
+
+def perform_ocr_and_convert(
+    file_bytes: bytes,
+    filename: str,
+    mime_type: str,
+) -> tuple[bytes, str]:
     """
-    Run Tesseract via image_to_data and keep only words whose confidence
-    score is above _MIN_CONF.
+    Main OCR entry point. Accepts image or PDF bytes.
 
-    Why: Tesseract assigns every recognised word a confidence score 0-100.
-    Low-confidence hits (ruled lines, background marks, ambiguous strokes)
-    cluster below 35.  Discarding them removes garbage output without
-    losing real words, which is the single biggest quality improvement
-    for handwritten or noisy documents.
+    Returns:
+        tuple: (docx_bytes, output_filename)
 
-    Falls back to plain image_to_string if image_to_data fails.
+    Raises:
+        ValueError: If file type is unsupported
+        RuntimeError: If OCR fails on all engines
     """
-    processed = _preprocess_image(img)
+    pages_text: list[str] = []
+    stem = Path(filename).stem
 
-    try:
-        data = pytesseract.image_to_data(
-            processed,
-            lang="eng",
-            config=_TESS_CONFIG,
-            output_type=pytesseract.Output.DICT,
-        )
+    # ── PDF input ──────────────────────────────────────
+    if mime_type == "application/pdf" or filename.lower().endswith(".pdf"):
+        logger.info(f"Processing PDF: {filename}")
+        images = _pdf_to_images(file_bytes)
 
-        words      = data["text"]
-        confs      = data["conf"]
-        block_nums = data["block_num"]
-        par_nums   = data["par_num"]
-        line_nums  = data["line_num"]
+        if not images:
+            raise ValueError("Could not extract pages from PDF.")
 
-        line_map: dict[tuple, list[str]] = {}
-        for i, (word, conf) in enumerate(zip(words, confs)):
-            if not str(word).strip():
-                continue
-            try:
-                conf_int = int(conf)
-            except (ValueError, TypeError):
-                continue
-            if conf_int < _MIN_CONF:
-                continue
-            key = (block_nums[i], par_nums[i], line_nums[i])
-            line_map.setdefault(key, []).append(str(word))
+        for i, page_image in enumerate(images):
+            logger.info(f"OCR on page {i+1}/{len(images)}")
+            text = _run_ocr_on_image(page_image)
+            pages_text.append(text)
 
-        if line_map:
-            reconstructed = "\n".join(
-                " ".join(words_in_line)
-                for words_in_line in line_map.values()
-                if words_in_line
-            )
-            return _clean_text(reconstructed)
+    # ── Image input (PNG, JPG, TIFF, WEBP, BMP) ───────
+    elif mime_type.startswith("image/") or filename.lower().endswith(
+        (".png", ".jpg", ".jpeg", ".tiff", ".tif", ".webp", ".bmp")
+    ):
+        logger.info(f"Processing image: {filename}")
+        image = Image.open(io.BytesIO(file_bytes))
+        text = _run_ocr_on_image(image)
+        pages_text.append(text)
 
-    except Exception:
-        pass
+    else:
+        raise ValueError(f"Unsupported file type for OCR: {mime_type}")
 
-    # Fallback
-    raw = pytesseract.image_to_string(processed, lang="eng", config=_TESS_CONFIG)
-    return _clean_text(raw)
-
-
-# ---------------------------------------------------------------------------
-# Text post-processing
-# ---------------------------------------------------------------------------
-def _clean_text(raw: str) -> str:
-    lines = raw.splitlines()
-    out   = []
-    for line in lines:
-        s = line.strip()
-        if s and _GARBAGE_LINE.match(s):
-            continue
-        out.append(re.sub(r"[^\S\n]+", " ", s))
-    text = "\n".join(out)
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    return text.strip()
-
-
-# ---------------------------------------------------------------------------
-# PDF page → PIL Image
-# ---------------------------------------------------------------------------
-def _render_pdf_page(page: fitz.Page) -> Image.Image:
-    pix = page.get_pixmap(dpi=_RENDER_DPI)
-    return Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-
-
-# ---------------------------------------------------------------------------
-# DOCX builder
-# ---------------------------------------------------------------------------
-def _build_docx(page_texts: list[str]) -> Document:
-    docx_doc = Document()
-    style    = docx_doc.styles["Normal"]
-    style.font.name = "Calibri"
-    style.font.size = Pt(11)
-
-    for page_num, text in enumerate(page_texts):
-        if text:
-            for para in text.split("\n\n"):
-                if para.strip():
-                    docx_doc.add_paragraph(para.strip())
-        else:
-            docx_doc.add_paragraph("[No text detected on this page]")
-
-        if page_num < len(page_texts) - 1:
-            docx_doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
-
-    return docx_doc
-
-
-# ---------------------------------------------------------------------------
-# Guard
-# ---------------------------------------------------------------------------
-def _assert_tesseract_available() -> None:
-    try:
-        pytesseract.get_tesseract_version()
-    except Exception:
+    # Check we actually got something
+    combined_text = " ".join(pages_text).strip()
+    if not combined_text:
         raise RuntimeError(
-            "Tesseract OCR engine is not installed or not found.\n"
-            "On Windows run: winget install UB-Mannheim.TesseractOCR\n"
-            "Download page:  https://github.com/UB-Mannheim/tesseract/wiki"
+            "OCR produced no text. The document may be blank, "
+            "image-only without text, or too low quality."
         )
 
+    # Build the .docx
+    docx_bytes = _build_docx(pages_text, stem)
+    output_filename = f"{stem}_ocr.docx"
 
-# ---------------------------------------------------------------------------
-# Public API — PDF
-# ---------------------------------------------------------------------------
-async def ocr_pdf_to_docx(input_path: str) -> str:
-    """
-    Convert a scanned (or mixed) PDF to an editable DOCX via OCR.
-
-    Hybrid strategy per page:
-      - If PyMuPDF extracts >= _MIN_TEXT_CHARS → use native text (fast path)
-      - Otherwise render at _RENDER_DPI and run Tesseract (OCR path)
-
-    Returns the absolute path to the generated DOCX in the system temp dir.
-    """
-    _assert_tesseract_available()
-
-    doc        = fitz.open(input_path)
-    page_texts = []
-
-    for page_num in range(len(doc)):
-        page        = doc.load_page(page_num)
-        native_text = page.get_text().strip()
-
-        if len(native_text) >= _MIN_TEXT_CHARS:
-            page_texts.append(_clean_text(native_text))
-        else:
-            img = _render_pdf_page(page)
-            page_texts.append(_ocr_image(img))
-
-    doc.close()
-
-    docx_doc = _build_docx(page_texts)
-    base     = os.path.splitext(os.path.basename(input_path))[0]
-    base     = re.sub(r"^temp_ocr_", "", base)
-    out_path = os.path.join(tempfile.gettempdir(), f"ocr_{base}.docx")
-    docx_doc.save(out_path)
-    return out_path
-
-
-# ---------------------------------------------------------------------------
-# Public API — image
-# ---------------------------------------------------------------------------
-async def ocr_image_to_docx(input_path: str) -> str:
-    """
-    Convert a raster image (JPG / PNG / GIF / BMP / TIFF / WEBP) to DOCX.
-
-    Returns the absolute path to the generated DOCX in the system temp dir.
-    """
-    _assert_tesseract_available()
-
-    img      = Image.open(input_path).convert("RGB")
-    text     = _ocr_image(img)
-    docx_doc = _build_docx([text])
-
-    base     = os.path.splitext(os.path.basename(input_path))[0]
-    out_path = os.path.join(tempfile.gettempdir(), f"ocr_{base}.docx")
-    docx_doc.save(out_path)
-    return out_path
+    return docx_bytes, output_filename

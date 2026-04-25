@@ -5,15 +5,17 @@ Handles document conversion (PDF↔DOCX, Image→PDF, PDF→Image), PDF merge, a
 Integrates with Supabase Storage and conversion history for authenticated users.
 """
 
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Request
+from fastapi import APIRouter, Response, UploadFile, File, Form, HTTPException, Request
+import asyncio
 import os
-from app.utils.file_utils import save_to_history, sanitize_filename, fetch_cloud_file
+from app.utils.file_utils import save_to_history, sanitize_filename, fetch_cloud_file, validate_file_size
 from fastapi.responses import FileResponse
 from typing import List, Optional
 
 from app.services.document_converter import convert_document, merge_pdfs
-from app.services.ocr_service import ocr_pdf_to_docx
+from app.services.ocr_service import perform_ocr_and_convert
 from app.utils.auth import get_optional_user
+from app.config import settings,    GOOGLE_VISION_ENABLED
 from app.services.storage_service import upload_file, BUCKET_ORIGINALS, BUCKET_CONVERTED
 from app.services.conversion_history_service import (
     create_conversion_record,
@@ -155,68 +157,109 @@ async def merge_documents_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/convert/ocr")
-async def ocr_endpoint(
+# ─────────────────────────────────────────────────────────────────
+# REPLACE or ADD this endpoint — matches your existing pattern
+# ─────────────────────────────────────────────────────────────────
+
+@router.post("/ocr")
+async def ocr_to_docx(
     request: Request,
     file: UploadFile = File(...),
 ):
-    """Extract text from a scanned PDF via OCR and return a DOCX."""
-    # --- Auth (optional) ---
+    # ── Step 1: Auth (identical to your pattern) ─────────────────
     user_id = await get_optional_user(request)
 
-    file_bytes = await file.read()
-    await file.seek(0)
+    # ── Step 2: Validate ─────────────────────────────────────────
+    SUPPORTED_TYPES = {
+        "application/pdf",
+        "image/png", "image/jpeg",
+        "image/tiff", "image/webp", "image/bmp",
+    }
+    if file.content_type not in SUPPORTED_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported type: {file.content_type}. Supported: PDF, PNG, JPG, TIFF, WEBP, BMP"
+        )
 
-    # --- Supabase: create pending record + upload original ---
+    file_bytes = await file.read()
+    if not validate_file_size(len(file_bytes), settings.MAX_FILE_SIZE):
+        max_mb = settings.MAX_FILE_SIZE / (1024 * 1024)
+        raise HTTPException(
+            status_code=413, detail=f"File too large. Maximum size is {max_mb:.0f}MB."
+        )
+
+    #  Step 3: Supabase pre-processing (MATCHES YOUR REAL PATTERN) ──
     conversion_id = None
+    original_path = None
+
     if user_id:
+        # NOT awaited — matches your synchronous create_conversion_record
         conversion_id = create_conversion_record(
             user_id=user_id,
             original_filename=file.filename or "unknown",
-            original_format="pdf",
+            original_format=file.content_type,          # e.g. "image/png"
             converted_format="docx",
-            file_size_original=len(file_bytes),
+            file_size_original=len(file_bytes),         # ← was missing
         )
-        original_path = upload_file(BUCKET_ORIGINALS, file_bytes, user_id, file.filename or "original")
+
+        # Same upload_file signature as your code
+        original_path = upload_file(
+            BUCKET_ORIGINALS,
+            file_bytes,
+            user_id,
+            file.filename or "original"
+        )
+
+        # ← This extra update step I missed before
         if conversion_id and original_path:
             from app.services.supabase_service import get_supabase
             get_supabase().table("conversions").update(
                 {"original_file_url": original_path}
             ).eq("id", conversion_id).execute()
 
+    # ── Step 4: Run OCR in background thread (CPU-bound) ─────────
     try:
-        # Save uploaded PDF to temp dir (NOT cwd)
-        import tempfile as _tf
-        temp_filename = os.path.join(_tf.gettempdir(), f"xvert_ocr_{file.filename}")
-        with open(temp_filename, "wb") as f:
-            f.write(file_bytes)
+        docx_bytes, output_filename = await asyncio.to_thread(
+            perform_ocr_and_convert,
+            file_bytes,
+            file.filename or "document",
+            file.content_type,
+        )
 
-        # Run OCR pipeline
-        output_path = await ocr_pdf_to_docx(temp_filename)
-
-        # Cleanup temp input
-        if os.path.exists(temp_filename):
-            os.remove(temp_filename)
-
-        # Read converted file
-        with open(output_path, "rb") as f:
-            converted_bytes = f.read()
-            filename = sanitize_filename(os.path.basename(output_path))
-
-        # --- Supabase: upload converted + complete record ---
+        # ── Step 5: Post-processing (MATCHES YOUR REAL PATTERN) ──
         if user_id and conversion_id:
-            converted_path = upload_file(BUCKET_CONVERTED, converted_bytes, user_id, filename)
+            converted_path = upload_file(
+                BUCKET_CONVERTED,
+                docx_bytes,
+                user_id,
+                output_filename
+            )
             if converted_path:
-                complete_conversion(conversion_id, converted_path, len(converted_bytes))
-                increment_user_stats(user_id, len(converted_bytes))
+                # Same complete_conversion signature as your code
+                complete_conversion(
+                    conversion_id,
+                    converted_path,
+                    len(docx_bytes)          # ← was missing file size
+                )
+                # Same increment_user_stats signature as your code
+                increment_user_stats(user_id, len(docx_bytes))
         else:
-            save_to_history(converted_bytes, filename)
+            # ← Guest fallback — was completely missing before
+            save_to_history(docx_bytes, output_filename)
 
-        return FileResponse(output_path, filename=filename)
+        # ── Step 6: Return file ───────────────────────────────────
+        return Response(
+            content=docx_bytes,
+            media_type="application/vnd.openxmlformats-officedocument"
+                       ".wordprocessingml.document",
+            headers={
+                "Content-Disposition": f'attachment; filename="{output_filename}"',
+            "X-OCR-Engine": "google-vision" if GOOGLE_VISION_ENABLED else "tesseract",
+            },
+        )
+
     except Exception as e:
-        # Cleanup temp file on error
-        if 'temp_filename' in locals() and os.path.exists(temp_filename):
-            os.remove(temp_filename)
+        # ← Now matches your pattern exactly
         if conversion_id:
             fail_conversion(conversion_id, str(e))
         raise HTTPException(status_code=500, detail=str(e))

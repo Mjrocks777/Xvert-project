@@ -4,6 +4,8 @@ Public API endpoints
 Thin wrappers around existing conversion services, strictly exposed at /v1.
 Returns JSON with a download URL instead of raw binary.
 """
+import asyncio
+
 from fastapi import APIRouter, File, UploadFile, Form, Request, BackgroundTasks
 from fastapi.responses import JSONResponse, FileResponse, Response
 import io
@@ -18,8 +20,7 @@ from typing import Optional, List
 from app.services.document_converter import convert_document, merge_pdfs
 from app.services.image_converter import convert_image
 from app.services.data_converter import convert_data
-from app.services.ocr_service import ocr_pdf_to_docx, ocr_image_to_docx
-
+from app.services.ocr_service import _build_docx
 if "app.services.ocr_service" not in locals():
     # Defensive import
     pass
@@ -186,29 +187,41 @@ async def convert_ocr_v1(file: UploadFile = File(...), format: str = Form("docx"
     if format not in ["docx", "txt"]:
         return JSONResponse(status_code=400, content={"error": f"Invalid format: {format}", "code": "UNSUPPORTED_FORMAT"})
 
-    temp_path = ""
     try:
-        temp_path = write_temp(file)
-        if ext == ".pdf":
-            out_path = await ocr_pdf_to_docx(temp_path)
-        else:
-            out_path = await ocr_image_to_docx(temp_path)
-            
-        if format == 'txt':
-            from docx import Document
-            doc = Document(out_path)
-            full_text = "\\n".join([p.text for p in doc.paragraphs])
-            os.remove(out_path)
-            
+        # Read bytes directly — no temp file needed anymore
+        file_bytes = await file.read()
+
+        # perform_ocr_and_convert is sync → run in thread (CPU-bound)
+        docx_bytes, output_filename = await asyncio.to_thread(
+            _build_docx,
+            file_bytes,
+            file.filename or "document",
+            file.content_type or "application/octet-stream",
+        )
+
+        if format == "txt":
+            # Convert docx bytes → txt in memory (no temp file)
+            from docx import Document as DocxDocument
+            doc = DocxDocument(io.BytesIO(docx_bytes))
+            full_text = "\n".join([p.text for p in doc.paragraphs])
+            txt_bytes = full_text.encode("utf-8")
+
+            # Write txt to temp for _store_file (keeps your existing token system)
             fd, txt_path = tempfile.mkstemp(suffix=".txt")
-            with os.fdopen(fd, 'w', encoding='utf-8') as f:
-                f.write(full_text)
-            
+            with os.fdopen(fd, "wb") as f:
+                f.write(txt_bytes)
+
             target_filename = "converted.txt"
             token = _store_file(txt_path, target_filename)
+
         else:
+            # Write docx bytes to temp for _store_file
+            fd, docx_path = tempfile.mkstemp(suffix=".docx")
+            with os.fdopen(fd, "wb") as f:
+                f.write(docx_bytes)
+
             target_filename = "converted.docx"
-            token = _store_file(out_path, target_filename)
+            token = _store_file(docx_path, target_filename)
 
         return {
             "success": True,
@@ -216,13 +229,9 @@ async def convert_ocr_v1(file: UploadFile = File(...), format: str = Form("docx"
             "filename": target_filename,
             "expires_in_seconds": _STORE_TTL_SECONDS
         }
+
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e), "code": "CONVERSION_FAILED"})
-    finally:
-        if os.path.exists(temp_path):
-            try: os.remove(temp_path)
-            except: pass
-
 # -------------------------------------------------------------
 # POST /v1/convert/merge-pdf
 # -------------------------------------------------------------

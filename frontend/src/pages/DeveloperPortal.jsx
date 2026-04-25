@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { AlertTriangle, Copy, Check, Trash2, Key, Activity, BookOpenText } from 'lucide-react'
+import { KeyRound, AlertTriangle, Copy, Check, Trash2, Key, Activity, BookOpenText, ChevronRight } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { supabase } from '../services/supabase'
 import authService from '../services/AuthService'
@@ -13,6 +13,7 @@ import axios from 'axios'
 import { getApiBaseUrl } from '../config/api'
 
 const springBounce = { type: 'spring', stiffness: 400, damping: 20 }
+const springGentle = { type: 'spring', stiffness: 300, damping: 25 }
 
 export default function DeveloperPortal() {
     const navigate = useNavigate()
@@ -24,9 +25,9 @@ export default function DeveloperPortal() {
     const apiBaseUrl = getApiBaseUrl()
 
     const [keys, setKeys] = useState([])
-    const [showKeyModal, setShowKeyModal] = useState(false)
-    const [newKey, setNewKey] = useState('')
+    const [modalData, setModalData] = useState({ isOpen: false, mode: 'create', id: null, name: '', value: '' })
     const [copied, setCopied] = useState(false)
+
 
     const [usageData, setUsageData] = useState(null)
 
@@ -83,20 +84,42 @@ export default function DeveloperPortal() {
             // Silent fail for background polls — don't spam toasts
         }
     }
-
+    const openCreateModal = () => {
+        setModalData({ isOpen: true, mode: 'create', id: null, name: '', value: '' })
+        setCopied(false)
+    }
     const handleGenerateKey = async () => {
         try {
             const h = await getAuthHeaders()
             const res = await axios.post(
                 `${apiBaseUrl}/api/keys/generate`,
-                { name: 'New Key' },
+                { name: modalData.name || 'New Key' },
                 { headers: h }
             )
-            setNewKey(res.data.key)
-            setShowKeyModal(true)
+            // Transition modal to view mode showing the newly created full key
+            setModalData(prev => ({
+                ...prev,
+                mode: 'view',
+                id: res.data.id,
+                name: res.data.name,
+                value: res.data.key,   // backend returns full key only on creation
+            }))
             setCopied(false)
+            fetchData()
         } catch (err) {
             addToast('Failed to generate key', 'error')
+        }
+    }
+    const openViewModal = async (key) => {
+        // Open immediately with prefix-only, then load decrypted value
+        setModalData({ isOpen: true, mode: 'view', id: key.id, name: key.name, value: '' })
+        setCopied(false)
+        try {
+            const h = await getAuthHeaders()
+            const res = await axios.get(`${apiBaseUrl}/api/keys/${key.id}`, { headers: h })
+            setModalData(prev => ({ ...prev, value: res.data.key }))
+        } catch (err) {
+            addToast('Failed to retrieve key', 'error')
         }
     }
 
@@ -109,12 +132,12 @@ export default function DeveloperPortal() {
                 { headers: h }
             )
             setKeys(prev => prev.map(k => k.id === id ? { ...k, name: newName } : k))
+            setModalData(prev => ({ ...prev, name: newName }))
             addToast('Key renamed', 'success')
         } catch (err) {
             addToast('Failed to rename key', 'error')
         }
     }
-
     const handleRevokeKey = async (id) => {
         if (!window.confirm('Revoke this key? This cannot be undone.')) return
         try {
@@ -124,6 +147,7 @@ export default function DeveloperPortal() {
                 { headers: h }
             )
             setKeys(prev => prev.filter(k => k.id !== id))
+            closeKeyModal()
             addToast('Key revoked', 'success')
         } catch (err) {
             addToast('Failed to revoke key', 'error')
@@ -131,15 +155,14 @@ export default function DeveloperPortal() {
     }
 
     const copyToClipboard = () => {
-        navigator.clipboard.writeText(newKey)
+        navigator.clipboard.writeText(modalData.value)
         setCopied(true)
         setTimeout(() => setCopied(false), 2000)
     }
 
     const closeKeyModal = () => {
-        setShowKeyModal(false)
-        setNewKey('')
-        fetchData()
+        setModalData({ isOpen: false, mode: 'create', id: null, name: '', value: '' })
+        setCopied(false)
     }
 
     const handleLogout = async () => {
@@ -167,6 +190,50 @@ export default function DeveloperPortal() {
                 session={session}
                 UserAvatarComponent={<UserAvatar session={session} onLogout={handleLogout} />}
             />
+
+            <AnimatePresence mode="wait">
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    transition={springGentle}
+                    style={{ maxWidth: '1000px', margin: '0 auto', padding: '1.5rem 2rem 0 2rem' }}
+                >
+                    {/* Back button */}
+                    <motion.div style={{ textAlign: 'left', marginBottom: '1rem' }}>
+                        <motion.span
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => navigate('/')}
+                            onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && navigate('/')}
+                            whileHover={{ x: -5 }}
+                            transition={springBounce}
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                padding: '0.5rem 0',
+                                color: 'var(--ag-text)',
+                                cursor: 'pointer',
+                                fontSize: '1.1rem',
+                                fontWeight: 700,
+                                userSelect: 'none',
+                                fontFamily: '"Outfit", sans-serif',
+                            }}
+                        >
+                            ⟵ Home
+                            <span style={{
+                                fontSize: '0.7rem',
+                                color: 'var(--ag-text-secondary)',
+                                fontWeight: 500,
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                border: '1px solid var(--ag-glass-border)',
+                            }}>ESC</span>
+                        </motion.span>
+                    </motion.div>
+                </motion.div>
+            </AnimatePresence>
 
             <main style={{ maxWidth: '1000px', margin: '0 auto', padding: '3rem 2rem' }}>
                 <div style={{ marginBottom: '2rem' }}>
@@ -232,7 +299,7 @@ export default function DeveloperPortal() {
                             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1.5rem' }}>
                                 <motion.button
                                     whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-                                    className="ag-btn-primary" onClick={handleGenerateKey}
+                                    className="ag-btn-primary" onClick={openCreateModal}
                                 >
                                     Generate new key
                                 </motion.button>
@@ -244,19 +311,25 @@ export default function DeveloperPortal() {
                                         No API keys generated yet.
                                     </div>
                                 ) : keys.map(k => (
-                                    <motion.div key={k.id} layout className="glass-panel" style={{ padding: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <motion.div
+                                        key={k.id}
+                                        layout
+                                        className="glass-panel"
+                                        onClick={() => openViewModal(k)}
+                                        style={{
+                                            padding: '1.5rem',
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            cursor: 'pointer',
+                                        }}
+                                        whileHover={{ scale: 1.01 }}
+                                        whileTap={{ scale: 0.99 }}
+                                    >
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                                            <input
-                                                type="text"
-                                                defaultValue={k.name}
-                                                onBlur={(e) => { if (e.target.value !== k.name) handleRenameKey(k.id, e.target.value) }}
-                                                style={{
-                                                    background: 'transparent', border: 'none',
-                                                    color: 'var(--ag-text)', fontWeight: 700,
-                                                    fontSize: '1.1rem', outline: 'none',
-                                                    borderBottom: '1px dashed var(--ag-glass-border)',
-                                                }}
-                                            />
+                                            <span style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--ag-text)' }}>
+                                                {k.name}
+                                            </span>
                                             <div style={{
                                                 fontFamily: 'monospace', color: 'var(--ag-text)',
                                                 background: 'var(--ag-input-bg)', padding: '0.3rem 0.6rem',
@@ -269,17 +342,7 @@ export default function DeveloperPortal() {
                                                 <span>Last used: {k.last_used_at ? new Date(k.last_used_at).toLocaleDateString() : 'Never used'}</span>
                                             </div>
                                         </div>
-                                        <button
-                                            onClick={() => handleRevokeKey(k.id)}
-                                            style={{
-                                                background: 'rgba(255, 82, 82, 0.1)', color: 'var(--ag-error)',
-                                                border: '1px solid rgba(255, 82, 82, 0.3)',
-                                                padding: '0.4rem 0.8rem', borderRadius: '6px',
-                                                cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600,
-                                            }}
-                                        >
-                                            Revoke
-                                        </button>
+                                        <ChevronRight size={18} color="var(--ag-text-secondary)" style={{ flexShrink: 0 }} />
                                     </motion.div>
                                 ))}
                             </div>
@@ -419,7 +482,7 @@ export default function DeveloperPortal() {
                 </AnimatePresence>
 
                 {/* Show-once key modal */}
-                {showKeyModal && (
+                {modalData.isOpen && (
                     <div style={{
                         position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                         backgroundColor: 'rgba(0,0,0,0.6)',
@@ -432,49 +495,138 @@ export default function DeveloperPortal() {
                             className="glass-panel"
                             style={{ padding: '2.5rem', maxWidth: '480px', width: '100%', margin: '0 1rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}
                         >
+                            {/* Header */}
                             <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
-                                <AlertTriangle color="var(--ag-accent)" size={32} style={{ flexShrink: 0 }} />
+                                {modalData.mode === 'create'
+                                    ? <KeyRound color="var(--ag-accent)" size={32} style={{ flexShrink: 0 }} />
+                                    : <AlertTriangle color="var(--ag-accent)" size={32} style={{ flexShrink: 0 }} />
+                                }
                                 <div>
                                     <h2 style={{ fontFamily: '"Outfit", sans-serif', margin: '0 0 0.5rem 0', color: 'var(--ag-text)' }}>
-                                        Save your API key
+                                        {modalData.mode === 'create' ? 'Create new API key' : 'API Key Details'}
                                     </h2>
                                     <p style={{ margin: 0, color: 'var(--ag-text-secondary)', fontSize: '0.9rem', lineHeight: 1.5 }}>
-                                        This key will only be shown once. Copy it now — you cannot retrieve it later.
+                                        {modalData.mode === 'create'
+                                            ? 'Give your key a name, then click Create.'
+                                            : 'You can rename this key or copy the full value.'
+                                        }
                                     </p>
                                 </div>
                             </div>
 
-                            <div style={{
-                                background: 'var(--ag-input-bg)',
-                                border: '1px solid var(--ag-glass-border)',
-                                borderRadius: '8px', padding: '1rem',
-                            }}>
-                                <code style={{ fontFamily: 'monospace', fontSize: '0.9rem', color: 'var(--ag-text)', wordBreak: 'break-all', userSelect: 'all' }}>
-                                    {newKey}
-                                </code>
+                            {/* Name input — rename on blur when in view mode */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                <label style={{ fontSize: '0.8rem', color: 'var(--ag-text-secondary)', fontWeight: 600 }}>
+                                    Key name
+                                </label>
+                                <input
+                                    type="text"
+                                    value={modalData.name}
+                                    onChange={e => setModalData(prev => ({ ...prev, name: e.target.value }))}
+                                    onBlur={e => {
+                                        if (modalData.mode === 'view' && modalData.id && e.target.value !== keys.find(k => k.id === modalData.id)?.name) {
+                                            handleRenameKey(modalData.id, e.target.value)
+                                        }
+                                    }}
+                                    placeholder="e.g. Production server"
+                                    style={{
+                                        background: 'var(--ag-input-bg)',
+                                        border: '1px solid var(--ag-glass-border)',
+                                        borderRadius: '8px', padding: '0.7rem 1rem',
+                                        color: 'var(--ag-text)', fontSize: '1rem', outline: 'none',
+                                    }}
+                                />
                             </div>
 
-                            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
-                                <motion.button
-                                    whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-                                    onClick={copyToClipboard}
-                                    className="ag-btn-primary"
-                                    style={{ padding: '0.6rem 1.2rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}
-                                >
-                                    {copied ? <Check size={16} /> : <Copy size={16} />}
-                                    {copied ? 'Copied!' : 'Copy key'}
-                                </motion.button>
-                                <motion.button
-                                    whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-                                    onClick={closeKeyModal}
-                                    style={{
-                                        background: 'transparent', border: '1px solid var(--ag-glass-border)',
-                                        color: 'var(--ag-text)', borderRadius: '30px',
-                                        padding: '0.6rem 1.2rem', fontWeight: 700, cursor: 'pointer',
-                                    }}
-                                >
-                                    I've saved my key
-                                </motion.button>
+                            {/* Key value — only shown in view mode */}
+                            {modalData.mode === 'view' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                    <label style={{ fontSize: '0.8rem', color: 'var(--ag-text-secondary)', fontWeight: 600 }}>
+                                        API Key
+                                    </label>
+                                    <div style={{
+                                        background: 'var(--ag-input-bg)',
+                                        border: '1px solid var(--ag-glass-border)',
+                                        borderRadius: '8px', padding: '1rem',
+                                        minHeight: '3rem', display: 'flex', alignItems: 'center',
+                                    }}>
+                                        {modalData.value
+                                            ? <code style={{ fontFamily: 'monospace', fontSize: '0.9rem', color: 'var(--ag-text)', wordBreak: 'break-all', userSelect: 'all' }}>
+                                                {modalData.value}
+                                            </code>
+                                            : <span style={{ color: 'var(--ag-text-secondary)', fontSize: '0.85rem', fontStyle: 'italic' }}>
+                                                Loading key…
+                                            </span>
+                                        }
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Footer buttons */}
+                            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'space-between', marginTop: '0.5rem' }}>
+                                {modalData.mode === 'create' ? (
+                                    <>
+                                        <motion.button
+                                            whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                                            onClick={closeKeyModal}
+                                            style={{
+                                                background: 'transparent', border: '1px solid var(--ag-glass-border)',
+                                                color: 'var(--ag-text)', borderRadius: '30px',
+                                                padding: '0.6rem 1.2rem', fontWeight: 700, cursor: 'pointer',
+                                            }}
+                                        >
+                                            Cancel
+                                        </motion.button>
+                                        <motion.button
+                                            whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                                            onClick={handleGenerateKey}
+                                            className="ag-btn-primary"
+                                            style={{ padding: '0.6rem 1.2rem' }}
+                                        >
+                                            Create Key
+                                        </motion.button>
+                                    </>
+                                ) : (
+                                    <>
+                                        {/* ── Left: destructive action ── */}
+                                        <motion.button
+                                            whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                                            onClick={() => handleRevokeKey(modalData.id)}
+                                            style={{
+                                                background: 'transparent',
+                                                border: '1px solid crimson',
+                                                color: 'black', borderRadius: '30px',
+                                                padding: '0.6rem 1.2rem', fontWeight: 700, cursor: 'pointer',
+                                            }}
+                                        >
+                                            Revoke key
+                                        </motion.button>
+                                        <div style={{ display: 'flex', gap: '1rem' }}>
+                                            <motion.button
+                                                whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                                                onClick={closeKeyModal}
+                                                style={{
+                                                    background: 'transparent', border: '1px solid var(--ag-glass-border)',
+                                                    color: 'var(--ag-text)', borderRadius: '30px',
+                                                    padding: '0.6rem 1.2rem', fontWeight: 700, cursor: 'pointer',
+                                                }}
+                                            >
+                                                Close
+                                            </motion.button>
+                                            {modalData.value && (
+                                                <motion.button
+                                                    whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                                                    onClick={copyToClipboard}
+                                                    className="ag-btn-primary"
+                                                    style={{ padding: '0.6rem 1.2rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}
+                                                >
+                                                    {copied ? <Check size={16} /> : <Copy size={16} />}
+                                                    {copied ? 'Copied!' : 'Copy key'}
+                                                </motion.button>
+                                            )}
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         </motion.div>
                     </div>

@@ -52,7 +52,25 @@ export default function Navbar({ tools, onToolSelect, onReset, session, UserAvat
                     transition={springBounce}
                     style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
                 >
-                    <span style={{ fontSize: '1.5rem' }}>🔄</span>
+                    <span style={{
+                        fontSize: '1.5rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '2.5rem', // Adjust size as needed
+                        height: '2.5rem'
+                    }}>
+                        <img
+                            src="/illustrations/logo.png"
+                            alt="Logo"
+                            style={{
+                                width: '100%',
+                                height: '100%',
+                                borderRadius: '50%',
+                                objectFit: 'cover'
+                            }}
+                        />
+                    </span>
                     <h1 style={{
                         fontFamily: '"Outfit", sans-serif',
                         fontSize: '1.6rem',
@@ -98,7 +116,7 @@ export default function Navbar({ tools, onToolSelect, onReset, session, UserAvat
                                 <motion.span
                                     animate={{
                                         rotate: (item.label === 'ALL TOOLS' && activeMenu === 'all-tools') ||
-                                                (item.label === 'CONVERT PDF' && activeMenu === 'convert-pdf')
+                                            (item.label === 'CONVERT PDF' && activeMenu === 'convert-pdf')
                                             ? 180 : 0
                                     }}
                                     transition={springBounce}
@@ -131,8 +149,8 @@ export default function Navbar({ tools, onToolSelect, onReset, session, UserAvat
                             letterSpacing: '0.5px',
                             transition: 'color 0.2s'
                         }}
-                        onMouseOver={(e) => e.currentTarget.style.color = 'var(--ag-accent)'}
-                        onMouseOut={(e) => e.currentTarget.style.color = 'var(--ag-text)'}
+                            onMouseOver={(e) => e.currentTarget.style.color = 'var(--ag-accent)'}
+                            onMouseOut={(e) => e.currentTarget.style.color = 'var(--ag-text)'}
                         >
                             Developers
                         </Link>
@@ -174,14 +192,58 @@ export default function Navbar({ tools, onToolSelect, onReset, session, UserAvat
             </div>
 
             {/* Mega Menu Dropdown */}
+
             {activeMenu && (
-                <MegaMenu
-                    tools={tools}
-                    activeMenu={activeMenu}
-                    onToolSelect={onToolSelect}
-                    onClose={() => setActiveMenu(null)}
-                />
-            )}
+    <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -10 }}
+        style={{
+            position: 'absolute',
+            top: '100%',
+            left: 0,
+            right: 0,
+            zIndex: 1000,
+            backgroundColor: 'var(--ag-card-bg)', 
+            backdropFilter: 'blur(20px)',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.15)',
+            borderRadius: '0 0 16px 16px',
+            border: '1px solid var(--ag-glass-border)',
+            borderTop: 'none',
+            // This is the key: targeting the internal tool container
+           padding: '1rem 2rem 2rem 2rem', // Reduced top padding from 3rem to 1rem
+            marginTop: '-1px',
+        }}
+    >
+        {/* We use a wrapper div to inject spacing into whatever MegaMenu renders */}
+        <div style={{ 
+            display: 'block',
+            // Force any internal grids to have a large gap
+            '--internal-gap': '2rem' 
+        }} className="menu-spacing-fix">
+            <MegaMenu
+                tools={tools}
+                activeMenu={activeMenu}
+                onToolSelect={onToolSelect}
+                onClose={() => setActiveMenu(null)}
+            />
+        </div>
+
+        {/* Global Style Injection to force spacing between tool items */}
+        <style>{`
+            .menu-spacing-fix div {
+                /* If MegaMenu uses a grid, this forces the gap */
+                gap: 1.5rem !important; 
+            }
+            .menu-spacing-fix a, .menu-spacing-fix button {
+                /* If tools are individual links/buttons, this prevents overlap */
+                margin-bottom: 0.5rem;
+                display: flex;
+                align-items: center;
+            }
+        `}</style>
+    </motion.div>
+)}
         </header>
     )
 }

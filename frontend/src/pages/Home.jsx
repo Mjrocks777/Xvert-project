@@ -324,6 +324,14 @@ const tools = [
     { id: 'split-pdf', name: 'Split PDF', desc: 'Extract specific pages from your PDF documents.', icon: '📑', type: 'pdf', target: 'split' },
     { id: 'pdf-to-jpg', name: 'PDF to JPG', desc: 'Convert PDF pages to JPG images.', icon: 'fz', type: 'pdf', target: 'jpg' },
     { id: 'pdf-to-png', name: 'PDF to PNG', desc: 'Convert PDF pages to PNG images.', icon: 'fz', type: 'pdf', target: 'png' },
+    {
+        id: 'ocr-to-word',
+        name: 'OCR (Scan to Word)',
+        desc: 'Extract text from images or scanned PDFs into editable DOCX documents.',
+        icon: '👁️',
+        type: 'ocr',
+        target: 'docx'
+    },
     // Image Tools
     { id: 'compress-image', name: 'Compress Image', desc: 'Reduce file size of your images (JPG, PNG, GIF).', icon: '📉', type: 'image', target: 'compress-img' },
     { id: 'scrub-data', name: 'Scrub Data (EXIF)', desc: 'Strip privacy metadata from your images.', icon: '🛡️', type: 'image', target: 'scrub' },
@@ -396,6 +404,7 @@ export default function Home() {
 
     const isSameFormat = useMemo(() => {
         if (!selectedTool || !file) return false
+
         if (selectedTool.id === 'scrub-data' || selectedTool.id === 'compress-pdf' || selectedTool.id === 'split-pdf' || selectedTool.id === 'compress-image') return false
         const sourceExt = file.name?.split('.').pop()?.toLowerCase() || ''
         const targetExt = selectedTool.target?.toLowerCase() || ''
@@ -419,12 +428,12 @@ export default function Home() {
     const getSmartMatches = useCallback((fileName) => {
         const ext = fileName.split('.').pop().toLowerCase()
         const extMap = {
-            'pdf': ['pdf-to-word', 'pdf-to-jpg', 'pdf-to-png'],
+            'pdf': ['pdf-to-word', 'pdf-to-jpg', 'pdf-to-png', 'ocr'],
             'docx': ['docx-to-pdf'],
             'doc': ['docx-to-pdf'],
-            'jpg': ['jpg-to-png', 'jpg-to-gif', 'image-to-pdf'],
-            'jpeg': ['jpg-to-png', 'jpg-to-gif', 'image-to-pdf'],
-            'png': ['png-to-jpg', 'png-to-gif', 'image-to-pdf'],
+            'jpg': ['jpg-to-png', 'jpg-to-gif', 'image-to-pdf', 'ocr'],
+            'jpeg': ['jpg-to-png', 'jpg-to-gif', 'image-to-pdf', 'ocr'],
+            'png': ['png-to-jpg', 'png-to-gif', 'image-to-pdf', 'ocr'],
             'gif': ['gif-to-jpg', 'gif-to-png'],
             'csv': ['csv-to-json', 'csv-to-xml', 'csv-to-excel'],
             'json': ['json-to-csv', 'json-to-xml', 'json-to-excel'],
@@ -490,7 +499,7 @@ export default function Home() {
     const getAcceptTypes = (tool) => {
         if (!tool) return '*'
         if (tool.id === 'merge-pdf') return '.pdf'
-        if (tool.type === 'ocr') return '.pdf,.jpg,.jpeg,.png,.gif,.bmp,.tiff,.webp'
+        if (tool.type === 'ocr') return '.pdf,.jpg,.jpeg,.png,.gif'
         if (tool.type === 'pdf') return '.pdf'
         if (tool.type === 'image') return '.jpg,.jpeg,.png,.gif'
         if (tool.type === 'jpg') return '.jpg,.jpeg'
@@ -697,6 +706,7 @@ export default function Home() {
                 console.log("remoteConvert returned:", resultBlob)
             } else if (file && (file.isRemote || file.isCloudUrl)) {
                 const cUrl = file.url
+
                 if (selectedTool.type === 'pdf' && selectedTool.id !== 'merge-pdf') {
                     resultBlob = await conversionService.convertDocument(null, 'pdf', finalTarget, cUrl, options)
                 } else if (selectedTool.type === 'image' || selectedTool.id === 'scrub-data') {
@@ -718,6 +728,8 @@ export default function Home() {
                 resultBlob = await conversionService.convertImage(file, finalTarget, null, options)
             } else if (selectedTool.type === 'docx') {
                 resultBlob = await conversionService.convertDocument(file, 'docx', 'pdf', null, options)
+            } else if (selectedTool.type === 'ocr') {
+                resultBlob = await conversionService.performOCR(file, session?.access_token);
             } else if (selectedTool.type === 'data') {
                 resultBlob = await conversionService.convertData(file, finalTarget)
             } else {
@@ -1089,7 +1101,9 @@ export default function Home() {
                             style={{
                                 display: 'flex',
                                 justifyContent: 'center',
-                                gap: '0.6rem',
+                               gap: '0.6rem',
+
+                               
                                 marginBottom: '1.5rem',
                                 flexWrap: 'wrap',
                             }}
@@ -1108,6 +1122,7 @@ export default function Home() {
                                             display: 'flex',
                                             alignItems: 'center',
                                             gap: '0.4rem',
+
                                             padding: '0.5rem 1.1rem',
                                             borderRadius: '50px',
                                             border: isActive ? '1.5px solid var(--ag-accent)' : '1px solid var(--ag-glass-border)',
@@ -1243,7 +1258,7 @@ export default function Home() {
                                         fontFamily: '"Outfit", sans-serif',
                                     }}
                                 >
-                                    Home
+                                    ⟵ Home
                                     <span style={{
                                         fontSize: '0.7rem',
                                         color: 'var(--ag-text-secondary)',
@@ -1254,6 +1269,7 @@ export default function Home() {
                                     }}>ESC</span>
                                 </motion.span>
                             </motion.div>
+
 
                             {/* Floating conversion card */}
                             <motion.div
@@ -1316,7 +1332,7 @@ export default function Home() {
                                 {/* Orbital Progress + Mascot Centerpiece */}
                                 {(isConverting || isDone) && (
                                     <div style={{ position: 'relative', minHeight: '350px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '1rem 0' }}>
-                                        
+
                                         {/* New Success Header (Icons + Text) */}
                                         <motion.div
                                             initial={{ opacity: 0, y: 20 }}
@@ -1505,93 +1521,93 @@ export default function Home() {
 
                                 {/* Advanced Settings Toggle — only for image tools with available settings */}
                                 {!isConverting && !isDone && (pendingFiles.length > 0 || (remoteUrl && remoteUrl.trim() !== '')) &&
-                                 selectedTool?.id !== 'merge-pdf' &&
-                                 selectedTool?.id !== 'compress-pdf' &&
-                                 selectedTool?.id !== 'split-pdf' &&
-                                 selectedTool?.id !== 'compress-image' &&
-                                 selectedTool?.id !== 'scrub-data' &&
-                                 (selectedTool?.type === 'image' || selectedTool?.type === 'jpg' || selectedTool?.type === 'png' || selectedTool?.type === 'gif') && (
-                                    <div style={{ margin: '0.5rem 0 1.5rem' }}>
-                                        <motion.button
-                                            onClick={() => setShowAdvanced(!showAdvanced)}
-                                            style={{
-                                                background: 'transparent',
-                                                border: 'none',
-                                                color: 'var(--ag-accent)',
-                                                fontSize: '0.85rem',
-                                                fontWeight: 600,
-                                                cursor: 'pointer',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '0.4rem',
-                                                margin: '0 auto',
-                                                padding: '0.5rem 1rem',
-                                                borderRadius: '8px',
-                                            }}
-                                            whileHover={{ background: 'rgba(var(--ag-accent-rgb), 0.1)' }}
-                                        >
-                                            <motion.span
-                                                animate={{ rotate: showAdvanced ? 180 : 0 }}
-                                                transition={{ duration: 0.3 }}
-                                                style={{ display: 'inline-block' }}
+                                    selectedTool?.id !== 'merge-pdf' &&
+                                    selectedTool?.id !== 'compress-pdf' &&
+                                    selectedTool?.id !== 'split-pdf' &&
+                                    selectedTool?.id !== 'compress-image' &&
+                                    selectedTool?.id !== 'scrub-data' &&
+                                    (selectedTool?.type === 'image' || selectedTool?.type === 'jpg' || selectedTool?.type === 'png' || selectedTool?.type === 'gif') && (
+                                        <div style={{ margin: '0.5rem 0 1.5rem' }}>
+                                            <motion.button
+                                                onClick={() => setShowAdvanced(!showAdvanced)}
+                                                style={{
+                                                    background: 'transparent',
+                                                    border: 'none',
+                                                    color: 'var(--ag-accent)',
+                                                    fontSize: '0.85rem',
+                                                    fontWeight: 600,
+                                                    cursor: 'pointer',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.4rem',
+                                                    margin: '0 auto',
+                                                    padding: '0.5rem 1rem',
+                                                    borderRadius: '8px',
+                                                }}
+                                                whileHover={{ background: 'rgba(var(--ag-accent-rgb), 0.1)' }}
                                             >
-                                                ⚙️
-                                            </motion.span>
-                                            {showAdvanced ? 'Hide Advanced Settings' : 'Advanced Settings'}
-                                        </motion.button>
-
-                                        <AnimatePresence>
-                                            {showAdvanced && (
-                                                <motion.div
-                                                    initial={{ height: 0, opacity: 0 }}
-                                                    animate={{ height: 'auto', opacity: 1 }}
-                                                    exit={{ height: 0, opacity: 0 }}
-                                                    transition={springGentle}
-                                                    style={{ overflow: 'hidden' }}
+                                                <motion.span
+                                                    animate={{ rotate: showAdvanced ? 180 : 0 }}
+                                                    transition={{ duration: 0.3 }}
+                                                    style={{ display: 'inline-block' }}
                                                 >
-                                                    <div style={{
-                                                        padding: '1.5rem',
-                                                        marginTop: '1rem',
-                                                        borderRadius: '12px',
-                                                        background: 'rgba(255, 255, 255, 0.03)',
-                                                        border: '1px solid var(--ag-glass-border)',
-                                                        textAlign: 'left',
-                                                        display: 'flex',
-                                                        flexDirection: 'column',
-                                                        gap: '1.2rem'
-                                                    }}>
-                                                        
-                                                        {/* Image Specific Settings */}
-                                                        {(selectedTool.type === 'image' || selectedTool.type === 'jpg' || selectedTool.type === 'png' || selectedTool.type === 'gif') && (
-                                                            <>
+                                                    ⚙️
+                                                </motion.span>
+                                                {showAdvanced ? 'Hide Advanced Settings' : 'Advanced Settings'}
+                                            </motion.button>
 
-                                                                
-                                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                                                    <div>
-                                                                        <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--ag-text-secondary)', marginBottom: '0.4rem' }}>Target Width (px)</label>
-                                                                        <input type="number" placeholder="Original" value={targetWidth} onChange={(e) => setTargetWidth(e.target.value)} style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', background: 'var(--ag-input-bg)', border: '1px solid var(--ag-glass-border)', color: 'var(--ag-text)', fontSize: '0.9rem' }} />
-                                                                    </div>
-                                                                    <div>
-                                                                        <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--ag-text-secondary)', marginBottom: '0.4rem' }}>Target Height (px)</label>
-                                                                        <input type="number" placeholder="Original" value={targetHeight} onChange={(e) => setTargetHeight(e.target.value)} style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', background: 'var(--ag-input-bg)', border: '1px solid var(--ag-glass-border)', color: 'var(--ag-text)', fontSize: '0.9rem' }} />
-                                                                    </div>
-                                                                </div>
+                                            <AnimatePresence>
+                                                {showAdvanced && (
+                                                    <motion.div
+                                                        initial={{ height: 0, opacity: 0 }}
+                                                        animate={{ height: 'auto', opacity: 1 }}
+                                                        exit={{ height: 0, opacity: 0 }}
+                                                        transition={springGentle}
+                                                        style={{ overflow: 'hidden' }}
+                                                    >
+                                                        <div style={{
+                                                            padding: '1.5rem',
+                                                            marginTop: '1rem',
+                                                            borderRadius: '12px',
+                                                            background: 'rgba(255, 255, 255, 0.03)',
+                                                            border: '1px solid var(--ag-glass-border)',
+                                                            textAlign: 'left',
+                                                            display: 'flex',
+                                                            flexDirection: 'column',
+                                                            gap: '1.2rem'
+                                                        }}>
 
-                                                                <div>
-                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
-                                                                        <label style={{ fontSize: '0.8rem', color: 'var(--ag-text-secondary)' }}>Compression Quality</label>
-                                                                        <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--ag-accent)' }}>{quality}%</span>
+                                                            {/* Image Specific Settings */}
+                                                            {(selectedTool.type === 'image' || selectedTool.type === 'jpg' || selectedTool.type === 'png' || selectedTool.type === 'gif') && (
+                                                                <>
+
+
+                                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                                                        <div>
+                                                                            <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--ag-text-secondary)', marginBottom: '0.4rem' }}>Target Width (px)</label>
+                                                                            <input type="number" placeholder="Original" value={targetWidth} onChange={(e) => setTargetWidth(e.target.value)} style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', background: 'var(--ag-input-bg)', border: '1px solid var(--ag-glass-border)', color: 'var(--ag-text)', fontSize: '0.9rem' }} />
+                                                                        </div>
+                                                                        <div>
+                                                                            <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--ag-text-secondary)', marginBottom: '0.4rem' }}>Target Height (px)</label>
+                                                                            <input type="number" placeholder="Original" value={targetHeight} onChange={(e) => setTargetHeight(e.target.value)} style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', background: 'var(--ag-input-bg)', border: '1px solid var(--ag-glass-border)', color: 'var(--ag-text)', fontSize: '0.9rem' }} />
+                                                                        </div>
                                                                     </div>
-                                                                    <input type="range" min="1" max="100" value={quality} onChange={(e) => setQuality(e.target.value)} style={{ width: '100%', accentColor: 'var(--ag-accent)', cursor: 'pointer' }} />
-                                                                </div>
-                                                            </>
-                                                        )}
-                                                    </div>
-                                                </motion.div>
-                                            )}
-                                        </AnimatePresence>
-                                    </div>
-                                )}
+
+                                                                    <div>
+                                                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                                                                            <label style={{ fontSize: '0.8rem', color: 'var(--ag-text-secondary)' }}>Compression Quality</label>
+                                                                            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--ag-accent)' }}>{quality}%</span>
+                                                                        </div>
+                                                                        <input type="range" min="1" max="100" value={quality} onChange={(e) => setQuality(e.target.value)} style={{ width: '100%', accentColor: 'var(--ag-accent)', cursor: 'pointer' }} />
+                                                                    </div>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    </motion.div>
+                                                )}
+                                            </AnimatePresence>
+                                        </div>
+                                    )}
 
 
 
@@ -1624,41 +1640,41 @@ export default function Home() {
                                         )}
                                         <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap', width: '100%' }}>
                                             <motion.button
-                                            onClick={() => {
-                                                const link = document.createElement('a')
-                                                link.href = resultUrl
-                                                const getTargetExt = (tool, originalFile) => {
-                                                    if (tool?.id === 'scrub-data' && originalFile) return originalFile.name.split('.').pop()
-                                                    if (tool?.id === 'compress-pdf' || tool?.id === 'split-pdf') return 'pdf'
-                                                    return tool?.target || 'file'
-                                                }
-                                                const fileExt = getTargetExt(selectedTool, file)
-                                                const baseName = (selectedTool?.type === 'pdf' && selectedTool?.id !== 'merge-pdf') ? 'document' : (files.length > 0 ? 'merged' : (file?.name?.split('.')[0] || 'remote_result'))
-                                                link.setAttribute('download', `converted_${baseName}.${fileExt}`)
-                                                document.body.appendChild(link)
-                                                link.click()
-                                                link.remove()
-                                            }}
-                                            className="ag-btn-primary"
-                                            whileHover={{ scale: 1.05 }}
-                                            whileTap={{ scale: 0.95 }}
-                                            transition={springBounce}
-                                            initial={{ scale: 0.9, opacity: 0 }}
-                                            animate={{ scale: 1, opacity: 1 }}
-                                            style={{ minWidth: '160px' }}
-                                        >
-                                            Download
-                                        </motion.button>
+                                                onClick={() => {
+                                                    const link = document.createElement('a')
+                                                    link.href = resultUrl
+                                                    const getTargetExt = (tool, originalFile) => {
+                                                        if (tool?.id === 'scrub-data' && originalFile) return originalFile.name.split('.').pop()
+                                                        if (tool?.id === 'compress-pdf' || tool?.id === 'split-pdf') return 'pdf'
+                                                        return tool?.target || 'file'
+                                                    }
+                                                    const fileExt = getTargetExt(selectedTool, file)
+                                                    const baseName = (selectedTool?.type === 'pdf' && selectedTool?.id !== 'merge-pdf') ? 'document' : (files.length > 0 ? 'merged' : (file?.name?.split('.')[0] || 'remote_result'))
+                                                    link.setAttribute('download', `converted_${baseName}.${fileExt}`)
+                                                    document.body.appendChild(link)
+                                                    link.click()
+                                                    link.remove()
+                                                }}
+                                                className="ag-btn-primary"
+                                                whileHover={{ scale: 1.05 }}
+                                                whileTap={{ scale: 0.95 }}
+                                                transition={springBounce}
+                                                initial={{ scale: 0.9, opacity: 0 }}
+                                                animate={{ scale: 1, opacity: 1 }}
+                                                style={{ minWidth: '160px' }}
+                                            >
+                                                Download
+                                            </motion.button>
 
-                                        <GoogleDriveSaver 
-                                            downloadUrl={resultUrl} 
-                                            filename={`converted_${(selectedTool?.type === 'pdf' && selectedTool?.id !== 'merge-pdf') ? 'document' : (files.length > 0 ? 'merged' : (file?.name?.split('.')[0] || 'remote_result'))}.${(selectedTool?.id === 'compress-pdf' || selectedTool?.id === 'split-pdf') ? 'pdf' : (selectedTool?.id === 'scrub-data' && file ? file.name.split('.').pop() : (selectedTool?.target || 'file'))}`} 
-                                        />
+                                            <GoogleDriveSaver
+                                                downloadUrl={resultUrl}
+                                                filename={`converted_${(selectedTool?.type === 'pdf' && selectedTool?.id !== 'merge-pdf') ? 'document' : (files.length > 0 ? 'merged' : (file?.name?.split('.')[0] || 'remote_result'))}.${(selectedTool?.id === 'compress-pdf' || selectedTool?.id === 'split-pdf') ? 'pdf' : (selectedTool?.id === 'scrub-data' && file ? file.name.split('.').pop() : (selectedTool?.target || 'file'))}`}
+                                            />
 
-                                        <DropboxSaver 
-                                            downloadUrl={resultUrl} 
-                                            filename={`converted_${(selectedTool?.type === 'pdf' && selectedTool?.id !== 'merge-pdf') ? 'document' : (files.length > 0 ? 'merged' : (file?.name?.split('.')[0] || 'remote_result'))}.${(selectedTool?.id === 'compress-pdf' || selectedTool?.id === 'split-pdf') ? 'pdf' : (selectedTool?.id === 'scrub-data' && file ? file.name.split('.').pop() : (selectedTool?.target || 'file'))}`} 
-                                        />
+                                            <DropboxSaver
+                                                downloadUrl={resultUrl}
+                                                filename={`converted_${(selectedTool?.type === 'pdf' && selectedTool?.id !== 'merge-pdf') ? 'document' : (files.length > 0 ? 'merged' : (file?.name?.split('.')[0] || 'remote_result'))}.${(selectedTool?.id === 'compress-pdf' || selectedTool?.id === 'split-pdf') ? 'pdf' : (selectedTool?.id === 'scrub-data' && file ? file.name.split('.').pop() : (selectedTool?.target || 'file'))}`}
+                                            />
                                         </div>
                                     </div>
                                 ) : (
@@ -1677,23 +1693,23 @@ export default function Home() {
                                                 <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--ag-text-secondary)', marginBottom: '0.6rem', textAlign: 'center', fontWeight: 500 }}>
                                                     Which pages would you like to extract?
                                                 </label>
-                                                <input 
-                                                    type="text" 
-                                                    placeholder="e.g. 1-5, 8, 11-13" 
-                                                    value={pageRange} 
-                                                    onChange={(e) => setPageRange(e.target.value)} 
-                                                    style={{ 
-                                                        width: '100%', 
-                                                        padding: '0.85rem', 
-                                                        borderRadius: '12px', 
-                                                        background: 'var(--ag-input-bg)', 
-                                                        border: '1px solid var(--ag-glass-border)', 
-                                                        color: 'var(--ag-text)', 
-                                                        fontSize: '0.95rem', 
+                                                <input
+                                                    type="text"
+                                                    placeholder="e.g. 1-5, 8, 11-13"
+                                                    value={pageRange}
+                                                    onChange={(e) => setPageRange(e.target.value)}
+                                                    style={{
+                                                        width: '100%',
+                                                        padding: '0.85rem',
+                                                        borderRadius: '12px',
+                                                        background: 'var(--ag-input-bg)',
+                                                        border: '1px solid var(--ag-glass-border)',
+                                                        color: 'var(--ag-text)',
+                                                        fontSize: '0.95rem',
                                                         textAlign: 'center',
                                                         boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)',
                                                         outline: 'none'
-                                                    }} 
+                                                    }}
                                                 />
                                             </div>
                                         )}

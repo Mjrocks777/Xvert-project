@@ -149,6 +149,24 @@ class ConversionService {
     }
 
     /**
+     * Extract text from images or scanned PDFs using OCR.
+     * @param {File} file - The file to process.
+     * @param {string} [format='docx'] - The target format (docx, txt).
+     * @returns {Promise<Blob>} - The converted document blob.
+     */
+    async performOCR(file, format = 'docx') {
+        const fd = new FormData();
+        if (file) {
+            fd.append('file', file);
+        } else {
+            throw new Error('performOCR: file required');
+        }
+        fd.append('format', format);
+
+        return this._postFormBlob('/api/ocr', fd);
+    }
+
+    /**
      * Convert a file from a remote URL.
      * @param {string} url - The URL of the file to fetch and convert.
      * @param {string} targetFormat - The target format.
