@@ -67,20 +67,32 @@ def _image_to_bytes(image: Image.Image) -> bytes:
 
 def _pdf_to_images(file_bytes: bytes) -> list[Image.Image]:
     """
-    Convert each PDF page into a PIL Image.
-    Uses pdf2image (poppler) for high-quality rasterization.
+    Convert each PDF page into a PIL Image using PyMuPDF.
+    No poppler needed — works on Render, Railway, any platform.
     """
-    
-    from pdf2image import convert_from_bytes
+    import fitz  # PyMuPDF — already in your requirements.txt
 
-    images = convert_from_bytes(
-        file_bytes,
-        dpi=300,          # High DPI = better OCR accuracy
-        fmt="png",
-        thread_count=2,
-    )
+    images = []
+    pdf_document = fitz.open(stream=file_bytes, filetype="pdf")
+
+    for page_num in range(len(pdf_document)):
+        page = pdf_document[page_num]
+
+        # 300 DPI equivalent — matrix scale of 300/72 ≈ 4.17
+        mat = fitz.Matrix(300 / 72, 300 / 72)
+        pix = page.get_pixmap(matrix=mat, alpha=False)
+
+        # Convert PyMuPDF pixmap → PIL Image
+        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        images.append(img)
+        logger.info(f"Rendered PDF page {page_num + 1}/{len(pdf_document)}")
+
+    pdf_document.close()
+
+    if not images:
+        raise ValueError("PDF appears to have no renderable pages.")
+
     return images
-
 
 # ─────────────────────────────────────────
 #  GOOGLE VISION OCR
