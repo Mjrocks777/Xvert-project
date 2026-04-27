@@ -88,9 +88,31 @@ export default function History() {
                 return { icon: FileCheck, color: '#22c55e', label: 'Completed' }
             case 'failed':
                 return { icon: AlertCircle, color: '#ef4444', label: 'Failed' }
+            case 'purged':
+                return { icon: Trash2, color: '#6b7280', label: 'Expired' }
             default:
                 return { icon: Clock, color: '#f59e0b', label: 'Pending' }
         }
+    }
+
+
+    const getExpiryLabel = (createdAt) => {
+        const PURGE_AFTER_MS = 30 * 60 * 1000  // 30 minutes in ms
+        const elapsed = Date.now() - new Date(createdAt).getTime()
+        const remainingMs = PURGE_AFTER_MS - elapsed
+        const remainingMin = Math.floor(remainingMs / 60000)
+
+        // Already expired — purge scheduler hasn't run yet but file is gone
+        if (remainingMin <= 0) return { label: 'Expiring soon', color: '#ef4444' }
+
+        // Snap to nearest threshold bucket
+        if (remainingMin <= 1) return { label: 'Expires in 1 min', color: '#ef4444' }
+        if (remainingMin <= 2) return { label: 'Expires in 2 min', color: '#ef4444' }
+        if (remainingMin <= 3) return { label: 'Expires in 3 min', color: '#f97316' }
+        if (remainingMin <= 5) return { label: 'Expires in 5 min', color: '#f97316' }
+        if (remainingMin <= 10) return { label: 'Expires in 10 min', color: '#f59e0b' }
+        if (remainingMin <= 20) return { label: 'Expires in 20 min', color: '#f59e0b' }
+        return { label: 'Expires in 30 min', color: '#6b7280' }
     }
 
     const getMockTool = (record) => {
@@ -235,6 +257,8 @@ export default function History() {
                                     {conversions.map((record, index) => {
                                         const statusConfig = getStatusConfig(record.status)
                                         const StatusIcon = statusConfig.icon
+                                        const expiry = record.status === 'completed' ? getExpiryLabel(record.created_at) : null
+
                                         return (
                                             <motion.div
                                                 key={record.id}
@@ -251,12 +275,17 @@ export default function History() {
                                                     alignItems: 'center',
                                                     justifyContent: 'space-between',
                                                     padding: '1rem 1.2rem',
-                                                    backgroundColor: 'var(--ag-card-bg)',
+                                                    // Purged cards get a subtle dimmed background
+                                                    backgroundColor: record.status === 'purged'
+                                                        ? 'var(--ag-input-bg)'
+                                                        : 'var(--ag-card-bg)',
                                                     border: '1px solid var(--ag-card-border)',
                                                     borderRadius: '14px',
                                                     backdropFilter: 'blur(8px)',
                                                     transition: 'box-shadow 0.3s',
                                                     gap: '1rem',
+                                                    // Purged cards slightly faded
+                                                    opacity: record.status === 'purged' ? 0.6 : 1,
                                                 }}
                                             >
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1, minWidth: 0 }}>
@@ -271,7 +300,11 @@ export default function History() {
                                                             overflow: 'hidden',
                                                             textOverflow: 'ellipsis',
                                                             whiteSpace: 'nowrap',
-                                                        }}>{record.original_filename}</div>
+                                                        }}>
+                                                            {record.original_filename}
+                                                        </div>
+
+                                                        {/* ── Metadata row ── */}
                                                         <div style={{
                                                             fontSize: '0.8rem',
                                                             color: 'var(--ag-text-secondary)',
@@ -290,15 +323,47 @@ export default function History() {
                                                             }}>
                                                                 {record.original_format} → {record.converted_format}
                                                             </span>
+
                                                             <span>{formatSize(record.file_size_original)}</span>
                                                             <span>•</span>
                                                             <span>{formatDate(record.created_at)}</span>
+
+                                                            {/* Status icon */}
                                                             <StatusIcon size={13} color={statusConfig.color} />
+
+                                                            {/* Expiry label — only on completed, snaps to buckets */}
+                                                            {expiry && (
+                                                                <span style={{
+                                                                    fontSize: '0.68rem',
+                                                                    fontWeight: 600,
+                                                                    color: expiry.color,
+                                                                    background: `${expiry.color}18`,  // 10% opacity bg
+                                                                    padding: '0.1rem 0.45rem',
+                                                                    borderRadius: '6px',
+                                                                    letterSpacing: '0.01em',
+                                                                }}>
+                                                                    {expiry.label}
+                                                                </span>
+                                                            )}
+
+                                                            {/* Purged label replaces expiry */}
+                                                            {record.status === 'purged' && (
+                                                                <span style={{
+                                                                    fontSize: '0.68rem',
+                                                                    fontWeight: 600,
+                                                                    color: '#6b7280',
+                                                                    background: '#6b728018',
+                                                                    padding: '0.1rem 0.45rem',
+                                                                    borderRadius: '6px',
+                                                                }}>
+                                                                    File deleted
+                                                                </span>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 </div>
 
-                                                {/* Action Buttons */}
+                                                {/* ── Action buttons ── */}
                                                 <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
                                                     {record.status === 'completed' && (
                                                         <motion.button
@@ -326,6 +391,26 @@ export default function History() {
                                                             {downloadingId === record.id ? '...' : 'Download'}
                                                         </motion.button>
                                                     )}
+
+                                                    {/* Purged — no download, show disabled placeholder */}
+                                                    {record.status === 'purged' && (
+                                                        <div style={{
+                                                            padding: '0.5rem 1rem',
+                                                            borderRadius: '10px',
+                                                            border: '1px solid var(--ag-glass-border)',
+                                                            fontWeight: 600,
+                                                            fontSize: '0.8rem',
+                                                            color: '#6b7280',
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '0.4rem',
+                                                            cursor: 'not-allowed',
+                                                        }}>
+                                                            <Trash2 size={13} />
+                                                            Deleted
+                                                        </div>
+                                                    )}
+
                                                     <motion.button
                                                         onClick={() => handleDelete(record.id)}
                                                         disabled={deletingId === record.id}
