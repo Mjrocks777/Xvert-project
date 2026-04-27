@@ -180,10 +180,12 @@ async def _route_conversion(
     if (source_ext in DOC_FORMAT_SET or source_ext in IMAGE_FORMAT_SET) and \
        (target_format in DOC_FORMAT_SET or target_format in IMAGE_FORMAT_SET):
 
-        # Build a minimal UploadFile-like object for document_converter
-        from app.services.batch_converter_compat import BytesUploadFile  # local shim
-        fake_upload = BytesUploadFile(filename=filename, content=raw_bytes)
-        out_path = await convert_document(fake_upload, source_ext, target_format)
+        out_path = await convert_document(
+            raw_bytes,      # file_content: bytes
+            filename,       # filename: str
+            source_ext,     # source_format: str
+            target_format,  # target_format: str
+        )
 
         with open(out_path, "rb") as f:
             converted_bytes = f.read()

@@ -59,14 +59,17 @@ export function useBatchUpload() {
             formData.append('target_format', targetFormat);
 
             const authHeaders = await _getAuthHeaders();
+            console.log('[Batch] POST', `${API_BASE}/api/batch/convert`, 'files:', files.length, 'target:', targetFormat);
             const res = await fetch(`${API_BASE}/api/batch/convert`, {
                 method: 'POST',
                 body: formData,
                 headers: authHeaders,  // no Content-Type: fetch sets multipart boundary automatically
             });
 
+            console.log('[Batch] Response status:', res.status, res.statusText);
             if (!res.ok) {
                 const text = await res.text();
+                console.error('[Batch] Server error body:', text);
                 throw new Error(text || `Upload failed (${res.status})`);
             }
 
@@ -137,6 +140,7 @@ export function useBatchUpload() {
         } catch (err) {
             setBatchError(err.message || 'Upload failed');
             setBatchStatus('error');
+            throw err;  // re-throw so the caller (handleConvert) can show an error toast
         }
     }, []);
 

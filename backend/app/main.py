@@ -1,13 +1,26 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+from contextlib import asynccontextmanager
+from app.services.purge_service import start_purge_scheduler
+import asyncio
 import os
 
 # Load environment variables
 load_dotenv()
 
+# ADD lifespan handler above your app = FastAPI(...)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup — launches purge loop as background task
+    purge_task = asyncio.create_task(start_purge_scheduler())
+    yield
+    # Shutdown — cancels cleanly when Render restarts
+    purge_task.cancel()
+
 app = FastAPI(
     title="Xvert API",
+    lifespan=lifespan, 
     description="Universal File Bridge — conversion service API",
     version="1.0.0"
 )
@@ -60,3 +73,5 @@ app.include_router(history.router, prefix="/api/history", tags=["history"])
 
 from app.routers import batch
 app.include_router(batch.router, prefix="/api/batch", tags=["batch-conversion"])
+
+

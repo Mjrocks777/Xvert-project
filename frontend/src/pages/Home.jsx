@@ -601,8 +601,10 @@ export default function Home() {
         setResultBlob(null)
         setExtractedText(null)
         setOcrDone(false)
-        setIsOcrConverting?.(false)
         setMascotState('idle')
+        // Reset progress state so a previous conversion's status doesn't bleed in
+        setIsProcessing(false)
+        setProcessingProgress(0)
         // Reset advanced settings
         setShowAdvanced(false)
         setPrivacyMode(false)
@@ -621,8 +623,10 @@ export default function Home() {
         setResultBlob(null)
         setExtractedText(null)
         setOcrDone(false)
-        setIsOcrConverting?.(false)
         setMascotState('idle')
+        // Reset progress state so stale conversion status doesn't bleed into new tool
+        setIsProcessing(false)
+        setProcessingProgress(0)
         // Reset advanced settings
         setShowAdvanced(false)
         setPrivacyMode(false)
@@ -657,6 +661,33 @@ export default function Home() {
             addToast('Pick a conversion tool first.', 'error')
             return
         }
+        // ── Detect batch BEFORE touching isProcessing/interval ──────────────
+        const trimmedUrlEarly = remoteUrl?.trim()
+        const isBatchJob = pendingFiles.length > 1 && selectedTool.id !== 'merge-pdf' && !trimmedUrlEarly
+
+        if (isBatchJob) {
+            // Batch: batchStatus ('uploading' → 'processing') drives isConverting — no isProcessing needed
+            setMascotState('converting')
+            try {
+                // Resolve finalTarget for batch (same logic as single-file path)
+                let batchTarget = selectedTool?.target
+                if (selectedTool?.id === 'compress-image') {
+                    const sourceExt = pendingFiles[0]?.name?.split('.').pop()?.toLowerCase() ?? 'jpg'
+                    batchTarget = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(sourceExt) ? sourceExt : 'jpg'
+                }
+                await startBatch(pendingFiles, batchTarget)
+                setMascotState('success')
+                addToast('Batch conversion started! 🎉', 'success')
+                saveRecent(selectedTool.name, batchTarget)
+                setTimeout(() => setMascotState('idle'), 3000)
+            } catch (err) {
+                setMascotState('error')
+                addToast(err.message || 'Batch conversion failed.', 'error')
+                setTimeout(() => setMascotState('idle'), 3000)
+            }
+            return
+        }
+
         setMascotState('converting')
         setIsProcessing(true)
         setProcessingProgress(0)
@@ -733,14 +764,7 @@ export default function Home() {
             } else if (selectedTool.type === 'data') {
                 resultBlob = await conversionService.convertData(file, finalTarget)
             } else {
-                clearInterval(simulatedProgressInterval); // batch handles its own
-                setIsProcessing(false);
-                await startBatch(pendingFiles, finalTarget)
-                setMascotState('success')
-                addToast('Conversion successful! 🎉', 'success')
-                saveRecent(selectedTool.name, finalTarget)
-                setTimeout(() => setMascotState('idle'), 3000)
-                return
+                throw new Error('No conversion handler matched for this tool.')
             }
 
             if (resultBlob) {
@@ -1101,9 +1125,9 @@ export default function Home() {
                             style={{
                                 display: 'flex',
                                 justifyContent: 'center',
-                               gap: '0.6rem',
+                                gap: '0.6rem',
 
-                               
+
                                 marginBottom: '1.5rem',
                                 flexWrap: 'wrap',
                             }}

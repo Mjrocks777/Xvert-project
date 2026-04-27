@@ -150,18 +150,23 @@ export default function Dashboard() {
     const handleToolSelect = (tool) => {
         setSelectedTool(tool)
         setFile(null)
+        setFiles([])
         setMessage('')
+        setLoading(false)
+        setProgress(0)
+        setDownloadUrl(null)
         setShowRemoteFetch(false)
 
     }
 
     const handleBackToGrid = () => {
         setSelectedTool(null)
-
         setFile(null)
         setFiles([])
         setMessage('')
         setDownloadUrl(null)
+        setLoading(false)
+        setProgress(0)
         setShowRemoteFetch(false)
     }
 
